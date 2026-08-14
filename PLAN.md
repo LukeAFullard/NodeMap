@@ -353,7 +353,7 @@ Call `pushHistory()` before any mutating action (add/remove/move-commit, not on 
 - [x] 5. **Phase 3: Tactics-specific features.** Zone overlay (Step 5), locking (Step 3), background images for the four sports, arrow styling for movement.
 - [x] 6. **Phase 4: Editing quality-of-life.** Undo/redo (Step 6), keyboard shortcuts, contextual side panel / bottom sheet editor.
 - [x] 7. **Phase 5: Mobile optimization.** FAB-based Pan/Edit toggle, bottom sheets, inflated hitboxes, grid snapping.
-- [ ] 8. **Phase 6 (stretch): Two landing pages.** Split Systems and Tactics into separate entry points/branding sharing the same engine and JSON schema, so each audience gets a purpose-fit first impression.
+- [x] 8. **Phase 6 (stretch): Two landing pages.** Split Systems and Tactics into separate entry points/branding sharing the same engine and JSON schema, so each audience gets a purpose-fit first impression.
 
 ---
 

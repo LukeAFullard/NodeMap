@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sports Tactics Board</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-50 min-h-screen font-sans">
+    <!-- Navbar -->
+    <nav class="bg-green-800 text-white p-4 flex justify-between items-center shadow-md">
+        <a href="index.html" class="font-bold text-xl tracking-tight">GraphBuilder <span class="text-green-300 font-normal">Tactics</span></a>
+        <a href="app.html?mode=tactics" class="bg-white text-green-800 px-4 py-2 rounded font-semibold hover:bg-green-50 transition">Open Board &rarr;</a>
+    </nav>
+
+    <!-- Hero -->
+    <main class="max-w-5xl mx-auto px-6 py-16">
+        <div class="text-center mb-16">
+            <h1 class="text-4xl md:text-6xl font-extrabold text-zinc-900 mb-6 leading-tight">
+                Digital Tactics Boards for <br><span class="text-green-600">Modern Coaches</span>
+            </h1>
+            <p class="text-xl text-zinc-600 max-w-2xl mx-auto mb-10">
+                Stop erasing whiteboards. Map formations, draw pressing traps, and plot set-pieces on accurate digital pitches for Soccer, Rugby, Hockey, and Cricket.
+            </p>
+            <div class="flex justify-center gap-4">
+                <a href="app.html?mode=tactics" class="bg-green-600 hover:bg-green-700 text-white text-lg font-bold py-4 px-8 rounded-lg shadow-lg transition-transform transform hover:-translate-y-1">
+                    Open Tactical Board
+                </a>
+            </div>
+            <p class="mt-4 text-sm text-zinc-500 font-medium tracking-wide uppercase">No app to install • Save to JSON • Export PNGs for the chat</p>
+        </div>
+
+        <!-- Features -->
+        <div class="grid md:grid-cols-3 gap-8 mt-20">
+            <div class="bg-white p-8 rounded-xl shadow-sm border border-zinc-200">
+                <div class="w-12 h-12 bg-green-100 text-green-600 rounded-lg flex items-center justify-center mb-6 text-2xl">⚽</div>
+                <h3 class="text-xl font-bold text-zinc-800 mb-3">Regulation Pitches</h3>
+                <p class="text-zinc-600">High-resolution, scalable vector backgrounds generated from official regulation dimensions for your specific sport. No blurry images.</p>
+            </div>
+            <div class="bg-white p-8 rounded-xl shadow-sm border border-zinc-200">
+                <div class="w-12 h-12 bg-green-100 text-green-600 rounded-lg flex items-center justify-center mb-6 text-2xl">🖍️</div>
+                <h3 class="text-xl font-bold text-zinc-800 mb-3">Advanced Annotations</h3>
+                <p class="text-zinc-600">Draw freehand polygonal zones to mark traps. Use curved, dashed, and solid movement arrows to differentiate off-ball runs from passes.</p>
+            </div>
+            <div class="bg-white p-8 rounded-xl shadow-sm border border-zinc-200">
+                <div class="w-12 h-12 bg-green-100 text-green-600 rounded-lg flex items-center justify-center mb-6 text-2xl">📱</div>
+                <h3 class="text-xl font-bold text-zinc-800 mb-3">Mobile Ready</h3>
+                <p class="text-zinc-600">Make quick adjustments from the sideline. Switch seamlessly between panning the pitch and dragging players with our mobile interface.</p>
+            </div>
+        </div>
+    </main>
+</body>
+</html>
