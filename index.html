@@ -46,13 +46,16 @@
             <!-- Polygons will be injected here dynamically -->
         </svg>
 
-        <!-- Floating UI just for the spike to show mode switches -->
+        <!-- Floating UI -->
         <div class="absolute top-4 left-4 z-50 bg-white p-4 rounded shadow">
-            <h1 class="font-bold text-lg mb-2">Phase 0 Spike</h1>
+            <h1 class="font-bold text-lg mb-2">Phase 1 MVP</h1>
             <button id="btn-physics" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Toggle Physics</button>
-            <div class="text-xs text-gray-500 max-w-xs mt-2">
-                Testing vis-network with an SVG overlay for zones. Drag the graph or zoom to see if the SVG polygon stays anchored.
-            </div>
+            <select id="mode-switch" class="mb-2 w-full p-1 border rounded text-sm">
+                <option value="systems">Systems Mode</option>
+                <option value="tactics">Tactics Mode</option>
+            </select>
+            <button id="btn-add-node" class="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Add Node</button>
+            <button id="btn-add-edge" class="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Add Edge</button>
         </div>
     </div>
 
@@ -80,6 +83,7 @@
         let physicsEnabled = true;
         const options = {
             interaction: { dragNodes: true, hover: true },
+            manipulation: { enabled: false },
             physics: {
                 enabled: physicsEnabled,
                 barnesHut: { gravitationalConstant: -2000 }
@@ -92,6 +96,38 @@
         document.getElementById('btn-physics').addEventListener('click', () => {
             physicsEnabled = !physicsEnabled;
             network.setOptions({ physics: { enabled: physicsEnabled } });
+        });
+
+        // Mode Switching
+        function setMode(mode, backgroundUrl = null) {
+            if (mode === 'tactics') {
+                physicsEnabled = false;
+                network.setOptions({ physics: { enabled: false } });
+
+                if (backgroundUrl) {
+                    container.style.backgroundImage = `url('${backgroundUrl}')`;
+                    container.style.backgroundSize = 'contain';
+                    container.style.backgroundRepeat = 'no-repeat';
+                    container.style.backgroundPosition = 'center';
+                }
+            } else {
+                physicsEnabled = true;
+                network.setOptions({ physics: { enabled: true } });
+                container.style.backgroundImage = 'none';
+            }
+        }
+
+        document.getElementById('mode-switch').addEventListener('change', (e) => {
+            setMode(e.target.value);
+        });
+
+        // Add Node / Add Edge
+        document.getElementById('btn-add-node').addEventListener('click', () => {
+            network.addNodeMode();
+        });
+
+        document.getElementById('btn-add-edge').addEventListener('click', () => {
+            network.addEdgeMode();
         });
 
         // --- 2. SVG Overlay Logic ---
