@@ -56,6 +56,11 @@
             </select>
             <button id="btn-add-node" class="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Add Node</button>
             <button id="btn-add-edge" class="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Add Edge</button>
+            <div class="h-px bg-gray-300 my-2"></div>
+            <button id="btn-export-json" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Export JSON</button>
+            <button id="btn-import-json" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Import JSON</button>
+            <button id="btn-export-png" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Export PNG</button>
+            <input type="file" id="input-import-json" accept=".json" class="hidden" />
         </div>
     </div>
 
@@ -202,6 +207,147 @@
         network.once("afterDrawing", () => {
              syncSvgTransform();
         });
+
+        // --- 3. JSON Export & Import Logic ---
+
+        function exportGraph() {
+            // Get positions to save them properly
+            const positions = network.getPositions();
+
+            // Map nodes to include their x and y if physics is disabled
+            const currentNodes = nodes.get().map(node => {
+                if (positions[node.id]) {
+                    return { ...node, x: positions[node.id].x, y: positions[node.id].y };
+                }
+                return node;
+            });
+
+            const currentMode = document.getElementById('mode-switch').value;
+
+            const payload = {
+                version: 1,
+                mode: currentMode,
+                nodes: currentNodes,
+                edges: edges.get(),
+                isPhysicsEnabled: physicsEnabled
+            };
+
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload, null, 2));
+            const a = document.createElement('a');
+            a.setAttribute("href", dataStr);
+            a.setAttribute("download", "graph_workspace.json");
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        }
+
+        function importGraph(jsonString) {
+            try {
+                const payload = JSON.parse(jsonString);
+
+                if (payload.version !== 1) {
+                    console.warn("Importing unversioned or different version graph.", payload.version);
+                }
+
+                nodes.clear();
+                edges.clear();
+
+                nodes.add(payload.nodes);
+                edges.add(payload.edges);
+
+                // Restore mode
+                if (payload.mode) {
+                    document.getElementById('mode-switch').value = payload.mode;
+                    setMode(payload.mode);
+                }
+
+                // If the physics was saved as false (maybe they manually turned it off in systems mode)
+                if (payload.isPhysicsEnabled === false) {
+                    physicsEnabled = false;
+                    network.setOptions({ physics: { enabled: false } });
+                } else if (payload.isPhysicsEnabled === true) {
+                    physicsEnabled = true;
+                    network.setOptions({ physics: { enabled: true } });
+                }
+
+            } catch (error) {
+                console.error("Failed to import JSON", error);
+                alert("Failed to parse JSON file.");
+            }
+        }
+
+        document.getElementById('btn-export-json').addEventListener('click', exportGraph);
+
+        document.getElementById('btn-import-json').addEventListener('click', () => {
+            document.getElementById('input-import-json').click();
+        });
+
+        document.getElementById('input-import-json').addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    importGraph(e.target.result);
+                    // Reset input
+                    event.target.value = '';
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        // --- 4. PNG Export Logic ---
+
+        function exportPng() {
+            const networkCanvas = document.querySelector('#network-canvas canvas');
+            if (!networkCanvas) return;
+
+            // Create an offscreen canvas to composite vis-network and svg overlay
+            const offscreen = document.createElement('canvas');
+            offscreen.width = networkCanvas.width;
+            offscreen.height = networkCanvas.height;
+            const ctx = offscreen.getContext('2d');
+
+            // Optional: fill with background color
+            ctx.fillStyle = '#f3f4f6'; // Match app background
+            ctx.fillRect(0, 0, offscreen.width, offscreen.height);
+
+            // If there's a background image in tactics mode, we would ideally draw it here.
+            // For now, drawing the canvas which has transparent background.
+            ctx.drawImage(networkCanvas, 0, 0);
+
+            // Serialize the SVG overlay and draw it onto the canvas
+            const svgData = new XMLSerializer().serializeToString(svgOverlay);
+            const DOMURL = window.URL || window.webkitURL || window;
+            const img = new Image();
+
+            // Note: SVG needs correct dimensions to render properly in image
+            const svgBlob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
+            const url = DOMURL.createObjectURL(svgBlob);
+
+            img.onload = function () {
+                ctx.drawImage(img, 0, 0, offscreen.width, offscreen.height);
+                DOMURL.revokeObjectURL(url);
+
+                // Trigger download
+                const link = document.createElement('a');
+                link.download = 'graph_snapshot.png';
+                link.href = offscreen.toDataURL('image/png');
+                link.click();
+            };
+
+            // Fallback if SVG fails to load (e.g. cross origin issues with images inside SVG)
+            img.onerror = function() {
+                console.warn("Failed to composite SVG. Downloading network canvas only.");
+                const link = document.createElement('a');
+                link.download = 'graph_snapshot.png';
+                link.href = networkCanvas.toDataURL('image/png');
+                link.click();
+            }
+
+            img.src = url;
+        }
+
+        document.getElementById('btn-export-png').addEventListener('click', exportPng);
 
     </script>
 </body>
