@@ -37,10 +37,24 @@
             z-index: 20; /* SVG sits above the vis-network canvas */
             pointer-events: none; /* Let clicks pass through to the graph by default */
         }
+        #pitch-background {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 5; /* Behind vis-network canvas */
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
     <div id="app-container">
+        <!-- Parametric Pitch Background -->
+        <svg id="pitch-background" xmlns="http://www.w3.org/2000/svg">
+            <g id="pitch-graphics"></g>
+        </svg>
+
         <!-- vis-network will mount here -->
         <div id="network-canvas"></div>
 
@@ -57,8 +71,15 @@
                 <option value="systems">Systems Mode</option>
                 <option value="tactics">Tactics Mode</option>
             </select>
+            <select id="sport-selector" class="mb-2 w-full p-1 border rounded text-sm hidden">
+                <option value="soccer">Soccer</option>
+                <option value="rugby">Rugby</option>
+                <option value="hockey">Hockey</option>
+                <option value="cricket">Cricket</option>
+            </select>
             <button id="btn-add-node" class="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Add Node</button>
             <button id="btn-add-edge" class="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Add Edge</button>
+            <button id="btn-add-arrow" class="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full hidden">Add Arrow (Movement)</button>
             <div class="h-px bg-gray-300 my-2"></div>
             <button id="btn-export-json" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Export JSON</button>
             <button id="btn-import-json" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Import JSON</button>
@@ -117,9 +138,20 @@
         const data = { nodes, edges };
 
         let physicsEnabled = true;
+        let currentEdgeMode = 'standard'; // 'standard' or 'arrow'
+
         const options = {
             interaction: { dragNodes: true, hover: true },
-            manipulation: { enabled: false },
+            manipulation: {
+                enabled: false,
+                addEdge: function(edgeData, callback) {
+                    if (currentEdgeMode === 'arrow') {
+                        edgeData.dashes = true;
+                        edgeData.arrows = 'to';
+                    }
+                    callback(edgeData);
+                }
+            },
             physics: {
                 enabled: physicsEnabled,
                 barnesHut: { gravitationalConstant: -2000 }
@@ -127,6 +159,35 @@
         };
 
         const network = new vis.Network(container, data, options);
+
+        // --- Phase 3: Node Locking ---
+
+        function setNodeLocked(nodeId, locked) {
+            // Also explicitly store x/y when locking so it doesn't drift if physics is enabled elsewhere
+            const positions = network.getPositions([nodeId]);
+            const pos = positions[nodeId];
+
+            nodes.update({
+                id: nodeId,
+                fixed: { x: locked, y: locked },
+                x: pos.x,
+                y: pos.y
+            });
+        }
+
+        network.on("doubleClick", function (params) {
+            if (params.nodes.length > 0) {
+                const nodeId = params.nodes[0];
+                const node = nodes.get(nodeId);
+                // Toggle lock state
+                const isLocked = node.fixed && node.fixed.x === true;
+                setNodeLocked(nodeId, !isLocked);
+
+                // Visual feedback (optional)
+                const newColor = !isLocked ? '#9ca3af' : undefined; // Gray when locked, default when not
+                nodes.update({ id: nodeId, color: newColor });
+            }
+        });
 
         // Toggle physics button
         document.getElementById('btn-physics').addEventListener('click', (e) => {
@@ -143,27 +204,159 @@
             }
         });
 
+        // --- Phase 3: Parametric Pitch Backgrounds ---
+
+        let currentSport = 'soccer';
+
+        function drawPitch(sport) {
+            const pitchGroup = document.getElementById('pitch-graphics');
+            pitchGroup.innerHTML = ''; // Clear previous
+
+            // Dimensions in canvas coordinates.
+            // Scale: 1 unit = 1 meter approx for layout purposes
+            const strokeColor = 'rgba(255, 255, 255, 0.5)';
+            const strokeWidth = 2;
+
+            function createLine(x1, y1, x2, y2) {
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+                line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+                line.setAttribute('stroke', strokeColor);
+                line.setAttribute('stroke-width', strokeWidth);
+                return line;
+            }
+
+            function createRect(x, y, w, h) {
+                const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                rect.setAttribute('x', x); rect.setAttribute('y', y);
+                rect.setAttribute('width', w); rect.setAttribute('height', h);
+                rect.setAttribute('fill', 'none');
+                rect.setAttribute('stroke', strokeColor);
+                rect.setAttribute('stroke-width', strokeWidth);
+                return rect;
+            }
+
+            function createCircle(cx, cy, r) {
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', cx); circle.setAttribute('cy', cy);
+                circle.setAttribute('r', r);
+                circle.setAttribute('fill', 'none');
+                circle.setAttribute('stroke', strokeColor);
+                circle.setAttribute('stroke-width', strokeWidth);
+                return circle;
+            }
+
+            if (sport === 'soccer') {
+                const w = 1050; // 105m * 10
+                const h = 680;  // 68m * 10
+                const cx = 0;
+                const cy = 0;
+
+                // Outer bounds (centered at 0,0)
+                pitchGroup.appendChild(createRect(-w/2, -h/2, w, h));
+
+                // Halfway line
+                pitchGroup.appendChild(createLine(0, -h/2, 0, h/2));
+
+                // Center circle (radius 9.15m = 91.5)
+                pitchGroup.appendChild(createCircle(0, 0, 91.5));
+
+                // Penalty areas (16.5m x 40.3m = 165 x 403)
+                pitchGroup.appendChild(createRect(-w/2, -403/2, 165, 403));
+                pitchGroup.appendChild(createRect(w/2 - 165, -403/2, 165, 403));
+
+            } else if (sport === 'rugby') {
+                const w = 1000; // 100m
+                const h = 700;  // 70m
+
+                // Outer bounds
+                pitchGroup.appendChild(createRect(-w/2, -h/2, w, h));
+                // Halfway
+                pitchGroup.appendChild(createLine(0, -h/2, 0, h/2));
+                // 22m lines
+                pitchGroup.appendChild(createLine(-w/2 + 220, -h/2, -w/2 + 220, h/2));
+                pitchGroup.appendChild(createLine(w/2 - 220, -h/2, w/2 - 220, h/2));
+                // 10m lines
+                const dash10 = createLine(-100, -h/2, -100, h/2);
+                dash10.setAttribute('stroke-dasharray', '10, 10');
+                pitchGroup.appendChild(dash10);
+                const dash10b = createLine(100, -h/2, 100, h/2);
+                dash10b.setAttribute('stroke-dasharray', '10, 10');
+                pitchGroup.appendChild(dash10b);
+                // In-goals (22m deep)
+                pitchGroup.appendChild(createRect(-w/2 - 220, -h/2, 220, h));
+                pitchGroup.appendChild(createRect(w/2, -h/2, 220, h));
+
+            } else if (sport === 'hockey') {
+                const w = 914; // 91.4m
+                const h = 550; // 55m
+
+                pitchGroup.appendChild(createRect(-w/2, -h/2, w, h));
+                pitchGroup.appendChild(createLine(0, -h/2, 0, h/2));
+                // 23m lines (approx 22.9m)
+                pitchGroup.appendChild(createLine(-w/2 + 229, -h/2, -w/2 + 229, h/2));
+                pitchGroup.appendChild(createLine(w/2 - 229, -h/2, w/2 - 229, h/2));
+
+                // Shooting circles (14.63m radius) - approximate as semi-circles with arcs
+                const arcL = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                arcL.setAttribute('d', `M ${-w/2},${-146.3} A 146.3 146.3 0 0 1 ${-w/2 + 146.3},0 A 146.3 146.3 0 0 1 ${-w/2},${146.3}`);
+                arcL.setAttribute('fill', 'none'); arcL.setAttribute('stroke', strokeColor); arcL.setAttribute('stroke-width', strokeWidth);
+                pitchGroup.appendChild(arcL);
+
+                const arcR = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                arcR.setAttribute('d', `M ${w/2},${-146.3} A 146.3 146.3 0 0 0 ${w/2 - 146.3},0 A 146.3 146.3 0 0 0 ${w/2},${146.3}`);
+                arcR.setAttribute('fill', 'none'); arcR.setAttribute('stroke', strokeColor); arcR.setAttribute('stroke-width', strokeWidth);
+                pitchGroup.appendChild(arcR);
+
+            } else if (sport === 'cricket') {
+                const r = 685; // ~137m diameter = 68.5m radius
+                pitchGroup.appendChild(createCircle(0, 0, r));
+
+                // Pitch strip (20.12m x 3.05m = 201 x 30)
+                const strip = createRect(-201/2, -30/2, 201, 30);
+                strip.setAttribute('fill', 'rgba(255,255,255,0.1)');
+                pitchGroup.appendChild(strip);
+
+                // Crease lines
+                pitchGroup.appendChild(createLine(-201/2 + 12.2, -30, -201/2 + 12.2, 30)); // Popping crease approx
+                pitchGroup.appendChild(createLine(201/2 - 12.2, -30, 201/2 - 12.2, 30));
+            }
+        }
+
         // Mode Switching
-        function setMode(mode, backgroundUrl = null) {
+        function setMode(mode, savedSport = null) {
             const physicsBtn = document.getElementById('btn-physics');
+            const sportSelector = document.getElementById('sport-selector');
+
             if (mode === 'tactics') {
                 physicsEnabled = false;
                 network.setOptions({ physics: { enabled: false } });
                 physicsBtn.classList.remove('bg-blue-500');
                 physicsBtn.classList.add('bg-gray-500');
 
-                if (backgroundUrl) {
-                    container.style.backgroundImage = `url('${backgroundUrl}')`;
-                    container.style.backgroundSize = 'contain';
-                    container.style.backgroundRepeat = 'no-repeat';
-                    container.style.backgroundPosition = 'center';
+                // Show sport selector, arrow button, and draw pitch
+                sportSelector.classList.remove('hidden');
+                document.getElementById('btn-add-arrow').classList.remove('hidden');
+                document.getElementById('app-container').style.backgroundColor = '#4ade80'; // Tailwind green-400 for grass
+
+                if (savedSport) {
+                    sportSelector.value = savedSport;
+                    currentSport = savedSport;
                 }
+                drawPitch(currentSport);
+                document.getElementById('pitch-background').style.display = 'block';
+
             } else {
                 physicsEnabled = true;
                 network.setOptions({ physics: { enabled: true } });
                 physicsBtn.classList.remove('bg-gray-500');
                 physicsBtn.classList.add('bg-blue-500');
-                container.style.backgroundImage = 'none';
+
+                // Hide sport selector, arrow button, and clear pitch
+                sportSelector.classList.add('hidden');
+                document.getElementById('btn-add-arrow').classList.add('hidden');
+                document.getElementById('app-container').style.backgroundColor = '#f3f4f6';
+                document.getElementById('pitch-background').style.display = 'none';
             }
         }
 
@@ -171,12 +364,23 @@
             setMode(e.target.value);
         });
 
-        // Add Node / Add Edge
+        document.getElementById('sport-selector').addEventListener('change', (e) => {
+            currentSport = e.target.value;
+            drawPitch(currentSport);
+        });
+
+        // Add Node / Add Edge / Add Arrow
         document.getElementById('btn-add-node').addEventListener('click', () => {
             network.addNodeMode();
         });
 
         document.getElementById('btn-add-edge').addEventListener('click', () => {
+            currentEdgeMode = 'standard';
+            network.addEdgeMode();
+        });
+
+        document.getElementById('btn-add-arrow').addEventListener('click', () => {
+            currentEdgeMode = 'arrow';
             network.addEdgeMode();
         });
 
@@ -196,7 +400,9 @@
 
         // Render the zones as SVG polygons
         function renderZoneOverlay() {
-            svgOverlay.innerHTML = ''; // clear existing
+            while (svgOverlay.firstChild) {
+                svgOverlay.removeChild(svgOverlay.firstChild);
+            }
 
             zones.get().forEach(zone => {
                 const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
@@ -224,20 +430,21 @@
             const centerX = containerRect.width / 2;
             const centerY = containerRect.height / 2;
 
-            // Calculate translation for the SVG.
-            // The canvas coordinates are mapped to DOM coordinates via:
-            // domX = (canvasX - viewPosition.x) * scale + centerX
-            // Therefore, the global transform for the SVG element is:
-            // translate(centerX - viewPosition.x * scale, centerY - viewPosition.y * scale) scale(scale)
-
             const translateX = centerX - (viewPosition.x * scale);
             const translateY = centerY - (viewPosition.y * scale);
 
             const transformString = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
 
-            // We apply this to a <g> tag inside the SVG normally, or directly via CSS transform on the SVG if its origin is 0,0
+            // Apply to overlay
             svgOverlay.style.transformOrigin = '0 0';
             svgOverlay.style.transform = transformString;
+
+            // Apply to pitch background graphics
+            const pitchBg = document.getElementById('pitch-background');
+            if (pitchBg) {
+                pitchBg.style.transformOrigin = '0 0';
+                pitchBg.style.transform = transformString;
+            }
         }
 
         // Hook up vis-network events to keep the SVG overlay perfectly in sync
@@ -274,7 +481,9 @@
                 mode: currentMode,
                 nodes: currentNodes,
                 edges: edges.get(),
-                isPhysicsEnabled: physicsEnabled
+                zones: zones.get(),
+                isPhysicsEnabled: physicsEnabled,
+                sport: currentSport
             };
 
             const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -300,14 +509,18 @@
 
                 nodes.clear();
                 edges.clear();
+                zones.clear();
 
                 nodes.add(payload.nodes);
                 edges.add(payload.edges);
+                if (payload.zones) {
+                    zones.add(payload.zones);
+                }
 
                 // Restore mode
                 if (payload.mode) {
                     document.getElementById('mode-switch').value = payload.mode;
-                    setMode(payload.mode);
+                    setMode(payload.mode, payload.sport);
                 }
 
                 // If the physics was saved as false (maybe they manually turned it off in systems mode)
@@ -329,6 +542,9 @@
                     physicsBtn.classList.remove('bg-blue-500');
                     physicsBtn.classList.add('bg-gray-500');
                 }
+
+                // Re-render zones overlay
+                renderZoneOverlay();
 
             } catch (error) {
                 console.error("Failed to import JSON", error);
@@ -649,44 +865,75 @@
             ctx.fillStyle = '#f3f4f6'; // Match app background
             ctx.fillRect(0, 0, offscreen.width, offscreen.height);
 
-            // If there's a background image in tactics mode, we would ideally draw it here.
-            // For now, drawing the canvas which has transparent background.
-            ctx.drawImage(networkCanvas, 0, 0);
+            // Draw Pitch Background if in Tactics Mode
+            if (document.getElementById('mode-switch').value === 'tactics') {
+                ctx.fillStyle = '#4ade80'; // grass green
+                ctx.fillRect(0, 0, offscreen.width, offscreen.height);
 
-            // Serialize the SVG overlay and draw it onto the canvas
-            let svgData = new XMLSerializer().serializeToString(svgOverlay);
+                const pitchBg = document.getElementById('pitch-background');
+                if (pitchBg) {
+                    let pitchData = new XMLSerializer().serializeToString(pitchBg);
+                    pitchData = pitchData.replace(/<svg([^>]+)>/, `<svg$1 width="${networkCanvas.width}" height="${networkCanvas.height}">`);
+                    const pBlob = new Blob([pitchData], {type: 'image/svg+xml;charset=utf-8'});
+                    const pUrl = window.URL.createObjectURL(pBlob);
 
-            // Nitpick fix: Explicitly inject width and height into the root <svg> tag for better cross-browser compatibility
-            svgData = svgData.replace(/<svg([^>]+)>/, `<svg$1 width="${networkCanvas.width}" height="${networkCanvas.height}">`);
+                    const pImg = new Image();
+                    pImg.src = pUrl;
 
-            const DOMURL = window.URL || window.webkitURL || window;
-            const img = new Image();
-
-            // Note: SVG needs correct dimensions to render properly in image
-            const svgBlob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
-            const url = DOMURL.createObjectURL(svgBlob);
-
-            img.onload = function () {
-                ctx.drawImage(img, 0, 0, offscreen.width, offscreen.height);
-                DOMURL.revokeObjectURL(url);
-
-                // Trigger download
-                const link = document.createElement('a');
-                link.download = 'graph_snapshot.png';
-                link.href = offscreen.toDataURL('image/png');
-                link.click();
-            };
-
-            // Fallback if SVG fails to load (e.g. cross origin issues with images inside SVG)
-            img.onerror = function() {
-                console.warn("Failed to composite SVG. Downloading network canvas only.");
-                const link = document.createElement('a');
-                link.download = 'graph_snapshot.png';
-                link.href = networkCanvas.toDataURL('image/png');
-                link.click();
+                    // We must wait for this image to load. To do this synchronously is hard,
+                    // we will nest it.
+                    pImg.onload = function() {
+                        ctx.drawImage(pImg, 0, 0, offscreen.width, offscreen.height);
+                        window.URL.revokeObjectURL(pUrl);
+                        drawNetworkAndOverlay();
+                    };
+                    pImg.onerror = function() {
+                        drawNetworkAndOverlay();
+                    }
+                    return; // Exit early and let onload handle the rest
+                }
             }
 
-            img.src = url;
+            drawNetworkAndOverlay();
+
+            function drawNetworkAndOverlay() {
+                ctx.drawImage(networkCanvas, 0, 0);
+
+                // Serialize the SVG overlay and draw it onto the canvas
+                let svgData = new XMLSerializer().serializeToString(svgOverlay);
+
+                // Explicitly inject width and height into the root <svg> tag for better cross-browser compatibility
+                svgData = svgData.replace(/<svg([^>]+)>/, `<svg$1 width="${networkCanvas.width}" height="${networkCanvas.height}">`);
+
+                const DOMURL = window.URL || window.webkitURL || window;
+                const img = new Image();
+
+                // Note: SVG needs correct dimensions to render properly in image
+                const svgBlob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
+                const url = DOMURL.createObjectURL(svgBlob);
+
+                img.onload = function () {
+                    ctx.drawImage(img, 0, 0, offscreen.width, offscreen.height);
+                    DOMURL.revokeObjectURL(url);
+
+                    // Trigger download
+                    const link = document.createElement('a');
+                    link.download = 'graph_snapshot.png';
+                    link.href = offscreen.toDataURL('image/png');
+                    link.click();
+                };
+
+                // Fallback if SVG fails to load (e.g. cross origin issues with images inside SVG)
+                img.onerror = function() {
+                    console.warn("Failed to composite SVG. Downloading canvas only.");
+                    const link = document.createElement('a');
+                    link.download = 'graph_snapshot.png';
+                    link.href = offscreen.toDataURL('image/png');
+                    link.click();
+                }
+
+                img.src = url;
+            }
         }
 
         document.getElementById('btn-export-png').addEventListener('click', exportPng);
