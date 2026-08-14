@@ -346,9 +346,9 @@ Call `pushHistory()` before any mutating action (add/remove/move-commit, not on 
 
 ## 6. Execution Phases
 
-- [ ] 1. **Phase 0: De-risk.** Spike the annotation model (Step 0). Decide `vis-network`-only vs. hybrid SVG overlay before writing app scaffolding.
-- [ ] 2. **Phase 1: MVP.** `index.html` + CDN setup. Canvas rendering, Add Node/Edge, physics toggle, basic mode switch.
-- [ ] 3. **Phase 2: Persistence.** Export/import JSON (Step 4), PNG snapshot export, versioned schema, verify exact coordinate restoration with physics disabled.
+- [x] 1. **Phase 0: De-risk.** Spike the annotation model (Step 0). Decide `vis-network`-only vs. hybrid SVG overlay before writing app scaffolding.
+- [x] 2. **Phase 1: MVP.** `index.html` + CDN setup. Canvas rendering, Add Node/Edge, physics toggle, basic mode switch.
+- [x] 3. **Phase 2: Persistence.** Export/import JSON (Step 4), PNG snapshot export, versioned schema, verify exact coordinate restoration with physics disabled.
 - [ ] 4. **Phase 2b: Bulk import.** CSV/XLSX/JSON upload with column-mapping UI and validation (Step 4b) — prioritize alongside Phase 2 since it's high-value for Systems Mode specifically.
 - [ ] 5. **Phase 3: Tactics-specific features.** Zone overlay (Step 5), locking (Step 3), background images for the four sports, arrow styling for movement.
 - [ ] 6. **Phase 4: Editing quality-of-life.** Undo/redo (Step 6), keyboard shortcuts, contextual side panel / bottom sheet editor.
