@@ -49,6 +49,13 @@
             <!-- Polygons will be injected here dynamically -->
         </svg>
 
+        <!-- Mobile Interaction Mode FAB -->
+        <div class="fixed bottom-4 right-4 z-50 md:hidden flex flex-col items-end">
+            <button id="fab-interaction-mode" class="bg-red-600 text-white rounded-full p-4 shadow-lg flex items-center justify-center font-bold text-sm h-14 w-14">
+                Edit
+            </button>
+        </div>
+
         <!-- Floating UI -->
         <div class="absolute top-4 left-4 z-50 bg-white p-4 rounded shadow">
             <h1 class="font-bold text-lg mb-2">Phase 1 MVP</h1>
@@ -79,6 +86,10 @@
                 <button id="btn-undo" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded text-sm w-1/2">Undo</button>
                 <button id="btn-redo" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded text-sm w-1/2">Redo</button>
             </div>
+            <div class="flex items-center mb-2 mt-2 ml-1 hidden" id="grid-snap-container">
+                <input type="checkbox" id="toggle-grid-snap" class="h-4 w-4 text-blue-600 rounded border-gray-300" />
+                <label for="toggle-grid-snap" class="ml-2 text-sm text-gray-700 font-bold">Grid Snap (20px)</label>
+            </div>
             <div class="h-px bg-gray-300 my-2"></div>
             <button id="btn-export-json" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Export JSON</button>
             <button id="btn-import-json" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Import JSON</button>
@@ -90,8 +101,8 @@
             <input type="file" id="input-bulk-import" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" class="hidden" />
         </div>
 
-        <!-- Contextual Side Panel -->
-        <div id="side-panel" class="absolute top-0 right-0 h-full w-64 bg-white shadow-lg transform translate-x-full transition-transform duration-300 ease-in-out z-50 p-4 border-l border-gray-200">
+        <!-- Contextual Side Panel / Bottom Sheet -->
+        <div id="side-panel" class="absolute inset-x-0 bottom-0 h-auto md:top-0 md:bottom-auto md:right-0 md:inset-x-auto md:h-full md:w-64 bg-white shadow-lg transform translate-y-full md:translate-x-full md:translate-y-0 transition-transform duration-300 ease-in-out z-50 p-4 border-t md:border-t-0 md:border-l border-gray-200">
             <h2 id="panel-title" class="font-bold text-lg mb-4">Edit Element</h2>
             <input type="hidden" id="edit-id" />
             <input type="hidden" id="edit-type" />
@@ -161,6 +172,13 @@
         let physicsEnabled = true;
         const options = {
             interaction: { dragNodes: true, hover: true },
+            nodes: {
+                margin: 10 // Inflated hitbox for mobile taps around labels
+            },
+            edges: {
+                hoverWidth: 3, // Easier to see/grab
+                selectionWidth: 3
+            },
             manipulation: {
                 enabled: false,
                 addNode: function(nodeData, callback) {
@@ -289,12 +307,17 @@
         function setMode(mode, backgroundUrl = null) {
             const physicsBtn = document.getElementById('btn-physics');
             const pitchSwitch = document.getElementById('pitch-switch');
+            const gridSnapContainer = document.getElementById('grid-snap-container');
+            const toggleGridSnap = document.getElementById('toggle-grid-snap');
+
             if (mode === 'tactics') {
                 physicsEnabled = false;
                 network.setOptions({ physics: { enabled: false } });
                 physicsBtn.classList.remove('bg-blue-500');
                 physicsBtn.classList.add('bg-gray-500');
                 pitchSwitch.classList.remove('hidden');
+                gridSnapContainer.classList.remove('hidden');
+                toggleGridSnap.checked = true; // On by default for tactics
 
                 if (backgroundUrl) {
                     if (currentPitchUrl) {
@@ -315,6 +338,8 @@
                 physicsBtn.classList.remove('bg-gray-500');
                 physicsBtn.classList.add('bg-blue-500');
                 pitchSwitch.classList.add('hidden');
+                gridSnapContainer.classList.add('hidden');
+                toggleGridSnap.checked = false; // Off by default for systems
 
                 if (currentPitchUrl) {
                     URL.revokeObjectURL(currentPitchUrl);
@@ -330,6 +355,30 @@
         });
 
         document.getElementById('pitch-switch').addEventListener('change', applyPitchBackground);
+
+        // Mobile Interaction Mode (Pan vs Edit)
+        let isPanMode = false; // default is false since vis-network defaults to dragNodes: true
+        document.getElementById('fab-interaction-mode').addEventListener('click', (e) => {
+            isPanMode = !isPanMode;
+            const btn = e.target;
+            if (isPanMode) {
+                btn.textContent = 'Pan';
+                btn.classList.remove('bg-red-600');
+                btn.classList.add('bg-blue-600');
+                network.setOptions({ interaction: { dragNodes: false } });
+
+                // Ensure drawing modes are off
+                if (isDrawingZone) {
+                    document.getElementById('btn-add-zone').click();
+                }
+                network.disableEditMode();
+            } else {
+                btn.textContent = 'Edit';
+                btn.classList.remove('bg-blue-600');
+                btn.classList.add('bg-red-600');
+                network.setOptions({ interaction: { dragNodes: true } });
+            }
+        });
 
         // Hook up Undo/Redo Buttons
         document.getElementById('btn-undo').addEventListener('click', undo);
@@ -399,6 +448,28 @@
         network.on("dragStart", function(params) {
             if (params.nodes && params.nodes.length > 0) {
                 pushHistory();
+            }
+        });
+
+        network.on("dragEnd", function(params) {
+            const isSnapEnabled = document.getElementById('toggle-grid-snap').checked;
+            if (isSnapEnabled && params.nodes && params.nodes.length > 0) {
+                const gridSize = 20;
+                const positions = network.getPositions(params.nodes);
+                const updates = [];
+                params.nodes.forEach(nodeId => {
+                    const pos = positions[nodeId];
+                    if (pos) {
+                        updates.push({
+                            id: nodeId,
+                            x: Math.round(pos.x / gridSize) * gridSize,
+                            y: Math.round(pos.y / gridSize) * gridSize
+                        });
+                    }
+                });
+                if (updates.length > 0) {
+                    nodes.update(updates);
+                }
             }
         });
 
@@ -553,11 +624,13 @@
                 document.getElementById('edit-color-group').classList.add('hidden');
             }
 
-            sidePanel.classList.remove('translate-x-full');
+            // Remove translation to show panel
+            sidePanel.classList.remove('translate-y-full', 'md:translate-x-full');
         }
 
         function closeSidePanel() {
-            sidePanel.classList.add('translate-x-full');
+            // Restore translation based on responsive classes
+            sidePanel.classList.add('translate-y-full', 'md:translate-x-full');
         }
 
         network.on("selectNode", function (params) {
