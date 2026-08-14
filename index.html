@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Graph Builder App - Phase 0 Spike</title>
+    <!-- vis-network CSS & JS -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/dist/vis-network.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/vis-network.min.js"></script>
+    <!-- Tailwind for quick styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        #app-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #f3f4f6; /* Tailwind gray-100 */
+        }
+        #network-canvas {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 10;
+        }
+        #svg-overlay {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 20; /* SVG sits above the vis-network canvas */
+            pointer-events: none; /* Let clicks pass through to the graph by default */
+        }
+    </style>
+</head>
+<body>
+    <div id="app-container">
+        <!-- vis-network will mount here -->
+        <div id="network-canvas"></div>
+
+        <!-- SVG overlay for tactical zones and freehand annotations -->
+        <svg id="svg-overlay" xmlns="http://www.w3.org/2000/svg">
+            <!-- Polygons will be injected here dynamically -->
+        </svg>
+
+        <!-- Floating UI just for the spike to show mode switches -->
+        <div class="absolute top-4 left-4 z-50 bg-white p-4 rounded shadow">
+            <h1 class="font-bold text-lg mb-2">Phase 0 Spike</h1>
+            <button id="btn-physics" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Toggle Physics</button>
+            <div class="text-xs text-gray-500 max-w-xs mt-2">
+                Testing vis-network with an SVG overlay for zones. Drag the graph or zoom to see if the SVG polygon stays anchored.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. Init vis-network with mock data ---
+
+        const nodes = new vis.DataSet([
+            { id: 1, label: 'Node 1 (Anchor)', fixed: true, x: 0, y: -100 },
+            { id: 2, label: 'Node 2' },
+            { id: 3, label: 'Node 3' },
+            { id: 4, label: 'Node 4' },
+            { id: 5, label: 'Node 5' }
+        ]);
+
+        const edges = new vis.DataSet([
+            { from: 1, to: 2, dashes: true, arrows: 'to' }, // Testing dashed arrows
+            { from: 1, to: 3, smooth: { type: 'curvedCW' }, arrows: 'to' }, // Testing curved lines
+            { from: 2, to: 4 },
+            { from: 2, to: 5 }
+        ]);
+
+        const container = document.getElementById('network-canvas');
+        const data = { nodes, edges };
+
+        let physicsEnabled = true;
+        const options = {
+            interaction: { dragNodes: true, hover: true },
+            physics: {
+                enabled: physicsEnabled,
+                barnesHut: { gravitationalConstant: -2000 }
+            }
+        };
+
+        const network = new vis.Network(container, data, options);
+
+        // Toggle physics button
+        document.getElementById('btn-physics').addEventListener('click', () => {
+            physicsEnabled = !physicsEnabled;
+            network.setOptions({ physics: { enabled: physicsEnabled } });
+        });
+
+        // --- 2. SVG Overlay Logic ---
+
+        const svgOverlay = document.getElementById('svg-overlay');
+
+        // Mock zone data (using internal vis-network canvas coordinates)
+        const zones = new vis.DataSet([
+            {
+                id: 'zone-1',
+                points: [[-150, -50], [150, -50], [100, 150], [-100, 150]], // Polygon vertices
+                color: 'rgba(239, 68, 68, 0.2)', // Tailwind red-500 semi-transparent
+                stroke: '#ef4444'
+            }
+        ]);
+
+        // Render the zones as SVG polygons
+        function renderZoneOverlay() {
+            svgOverlay.innerHTML = ''; // clear existing
+
+            zones.get().forEach(zone => {
+                const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+                // The points are in Canvas space, so we store them raw. We transform the whole SVG later.
+                poly.setAttribute('points', zone.points.map(p => p.join(',')).join(' '));
+                poly.setAttribute('fill', zone.color);
+                poly.setAttribute('stroke', zone.stroke);
+                poly.setAttribute('stroke-width', '2');
+                // If we want the zone to be clickable later, we'd enable pointer-events on the polygon
+
+                svgOverlay.appendChild(poly);
+            });
+
+            syncSvgTransform(); // apply current viewport transform immediately
+        }
+
+        // Sync the SVG layer's transform to match the vis-network canvas viewport
+        function syncSvgTransform() {
+            // Get current scale (zoom) and translation (pan) from the network
+            const scale = network.getScale();
+            const viewPosition = network.getViewPosition();
+
+            // vis-network viewport center is relative to the DOM container center.
+            const containerRect = container.getBoundingClientRect();
+            const centerX = containerRect.width / 2;
+            const centerY = containerRect.height / 2;
+
+            // Calculate translation for the SVG.
+            // The canvas coordinates are mapped to DOM coordinates via:
+            // domX = (canvasX - viewPosition.x) * scale + centerX
+            // Therefore, the global transform for the SVG element is:
+            // translate(centerX - viewPosition.x * scale, centerY - viewPosition.y * scale) scale(scale)
+
+            const translateX = centerX - (viewPosition.x * scale);
+            const translateY = centerY - (viewPosition.y * scale);
+
+            const transformString = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+
+            // We apply this to a <g> tag inside the SVG normally, or directly via CSS transform on the SVG if its origin is 0,0
+            svgOverlay.style.transformOrigin = '0 0';
+            svgOverlay.style.transform = transformString;
+        }
+
+        // Hook up vis-network events to keep the SVG overlay perfectly in sync
+        network.on("zoom", syncSvgTransform);
+        network.on("dragging", syncSvgTransform);
+        network.on("dragEnd", syncSvgTransform);
+        network.on("animation", syncSvgTransform); // needed if physics auto-pans the camera
+
+        // Initial render
+        renderZoneOverlay();
+        // The network might auto-fit on load, so we need to wait a tick for the initial layout
+        network.once("afterDrawing", () => {
+             syncSvgTransform();
+        });
+
+    </script>
+</body>
+</html>
