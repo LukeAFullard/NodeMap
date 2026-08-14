@@ -75,6 +75,10 @@
             </div>
             <button id="btn-add-zone" class="bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Add Zone</button>
             <button id="btn-toggle-lock" class="bg-orange-500 hover:bg-orange-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Lock/Unlock Selected</button>
+            <div class="flex gap-2 mb-2 mt-2">
+                <button id="btn-undo" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded text-sm w-1/2">Undo</button>
+                <button id="btn-redo" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded text-sm w-1/2">Redo</button>
+            </div>
             <div class="h-px bg-gray-300 my-2"></div>
             <button id="btn-export-json" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Export JSON</button>
             <button id="btn-import-json" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Import JSON</button>
@@ -84,6 +88,28 @@
 
             <input type="file" id="input-import-json" accept=".json" class="hidden" />
             <input type="file" id="input-bulk-import" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" class="hidden" />
+        </div>
+
+        <!-- Contextual Side Panel -->
+        <div id="side-panel" class="absolute top-0 right-0 h-full w-64 bg-white shadow-lg transform translate-x-full transition-transform duration-300 ease-in-out z-50 p-4 border-l border-gray-200">
+            <h2 id="panel-title" class="font-bold text-lg mb-4">Edit Element</h2>
+            <input type="hidden" id="edit-id" />
+            <input type="hidden" id="edit-type" />
+
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Label</label>
+                <input type="text" id="edit-label" class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+
+            <div id="edit-color-group" class="mb-4 hidden">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Color / Group</label>
+                <input type="text" id="edit-color" class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="#ff0000 or group name" />
+            </div>
+
+            <div class="flex justify-between mt-6">
+                <button id="btn-panel-cancel" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded text-sm w-1/2 mr-2">Cancel</button>
+                <button id="btn-panel-save" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm w-1/2 ml-2">Save</button>
+            </div>
         </div>
 
         <!-- Column Mapping Modal -->
@@ -137,7 +163,13 @@
             interaction: { dragNodes: true, hover: true },
             manipulation: {
                 enabled: false,
+                addNode: function(nodeData, callback) {
+                    pushHistory();
+                    nodeData.label = nodeData.label || 'New Node';
+                    callback(nodeData);
+                },
                 addEdge: function(edgeData, callback) {
+                    pushHistory();
                     const style = document.getElementById('edge-style').value;
                     edgeData.arrows = 'to';
                     if (style === 'dashed') {
@@ -299,6 +331,10 @@
 
         document.getElementById('pitch-switch').addEventListener('change', applyPitchBackground);
 
+        // Hook up Undo/Redo Buttons
+        document.getElementById('btn-undo').addEventListener('click', undo);
+        document.getElementById('btn-redo').addEventListener('click', redo);
+
         // Add Node / Add Edge
         document.getElementById('btn-add-node').addEventListener('click', () => {
             network.addNodeMode();
@@ -325,6 +361,7 @@
                 btn.classList.remove('bg-red-500', 'hover:bg-red-700');
                 btn.textContent = 'Add Zone';
                 if (currentZonePoints.length > 2) {
+                    pushHistory();
                     zones.add({
                         id: 'zone-' + Date.now(),
                         points: currentZonePoints,
@@ -359,11 +396,18 @@
             }
         });
 
+        network.on("dragStart", function(params) {
+            if (params.nodes && params.nodes.length > 0) {
+                pushHistory();
+            }
+        });
+
         // Toggle Node Lock
         document.getElementById('btn-toggle-lock').addEventListener('click', () => {
             const selectedNodeIds = network.getSelectedNodes();
             if (selectedNodeIds.length === 0) return;
 
+            pushHistory();
             const updates = selectedNodeIds.map(id => {
                 const node = nodes.get(id);
                 // In vis-network, 'fixed' can be a boolean or an object {x: boolean, y: boolean}
@@ -450,6 +494,149 @@
              syncSvgTransform();
         });
 
+        // --- Undo / Redo Engine ---
+        const historyStack = { past: [], future: [] };
+
+        function snapshot() {
+            // Get current positions to save exact layout if physics is off
+            const positions = network.getPositions();
+            const currentNodes = nodes.get().map(node => {
+                if (positions[node.id]) {
+                    return { ...node, x: positions[node.id].x, y: positions[node.id].y };
+                }
+                return node;
+            });
+            return JSON.stringify({ nodes: currentNodes, edges: edges.get(), zones: zones.get() });
+        }
+
+        function pushHistory() {
+            historyStack.past.push(snapshot());
+            historyStack.future = [];
+            if (historyStack.past.length > 50) historyStack.past.shift();
+        }
+
+        function undo() {
+            if (!historyStack.past.length) return;
+            historyStack.future.push(snapshot());
+            restoreSnapshot(historyStack.past.pop());
+        }
+
+        function redo() {
+            if (!historyStack.future.length) return;
+            historyStack.past.push(snapshot());
+            restoreSnapshot(historyStack.future.pop());
+        }
+
+        function restoreSnapshot(snap) {
+            const state = JSON.parse(snap);
+            nodes.clear(); edges.clear(); zones.clear();
+            nodes.add(state.nodes); edges.add(state.edges); zones.add(state.zones);
+            renderZoneOverlay();
+        }
+
+        // --- Contextual Side Panel Logic ---
+        const sidePanel = document.getElementById('side-panel');
+
+        function openSidePanel(type, id) {
+            const item = type === 'node' ? nodes.get(id) : edges.get(id);
+            if (!item) return;
+
+            document.getElementById('edit-id').value = id;
+            document.getElementById('edit-type').value = type;
+            document.getElementById('panel-title').textContent = type === 'node' ? 'Edit Node' : 'Edit Edge';
+            document.getElementById('edit-label').value = item.label || '';
+
+            if (type === 'node') {
+                document.getElementById('edit-color-group').classList.remove('hidden');
+                document.getElementById('edit-color').value = item.group || item.color || '';
+            } else {
+                document.getElementById('edit-color-group').classList.add('hidden');
+            }
+
+            sidePanel.classList.remove('translate-x-full');
+        }
+
+        function closeSidePanel() {
+            sidePanel.classList.add('translate-x-full');
+        }
+
+        network.on("selectNode", function (params) {
+            if (params.nodes.length === 1) {
+                openSidePanel('node', params.nodes[0]);
+            } else {
+                closeSidePanel();
+            }
+        });
+
+        network.on("selectEdge", function (params) {
+            if (params.nodes.length === 0 && params.edges.length === 1) {
+                openSidePanel('edge', params.edges[0]);
+            } else if (params.nodes.length !== 1) {
+                closeSidePanel();
+            }
+        });
+
+        network.on("deselectNode", closeSidePanel);
+        network.on("deselectEdge", closeSidePanel);
+
+        document.getElementById('btn-panel-cancel').addEventListener('click', closeSidePanel);
+
+        document.getElementById('btn-panel-save').addEventListener('click', () => {
+            const id = document.getElementById('edit-id').value;
+            const type = document.getElementById('edit-type').value;
+            const label = document.getElementById('edit-label').value;
+            const colorGroup = document.getElementById('edit-color').value;
+
+            if (!id || !type) return;
+
+            pushHistory();
+
+            if (type === 'node') {
+                const updateData = { id: id, label: label };
+                // A simplistic check: if it looks like hex, set color, else set group
+                if (colorGroup.startsWith('#') || colorGroup.startsWith('rgb')) {
+                    updateData.color = colorGroup;
+                    updateData.group = null;
+                } else if (colorGroup) {
+                    updateData.group = colorGroup;
+                }
+                nodes.update(updateData);
+            } else if (type === 'edge') {
+                edges.update({ id: id, label: label });
+            }
+
+            closeSidePanel();
+        });
+
+
+        // Keyboard Shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Only trigger if we aren't typing in an input/textarea
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+
+            // Undo / Redo
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+                e.preventDefault();
+                if (e.shiftKey) {
+                    redo();
+                } else {
+                    undo();
+                }
+            }
+
+            // Delete Selection
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                const selectedNodes = network.getSelectedNodes();
+                const selectedEdges = network.getSelectedEdges();
+
+                if (selectedNodes.length > 0 || selectedEdges.length > 0) {
+                    e.preventDefault();
+                    pushHistory();
+                    network.deleteSelected();
+                }
+            }
+        });
+
         // --- 3. JSON Export & Import Logic ---
 
         function exportGraph() {
@@ -495,6 +682,7 @@
                     console.warn("Importing unversioned or different version graph.", payload.version);
                 }
 
+                pushHistory();
                 nodes.clear();
                 edges.clear();
 
@@ -823,6 +1011,7 @@
             }
 
             // Commit
+            pushHistory();
             nodes.add(finalNodesToAdd);
             edges.add(mappedEdges);
 

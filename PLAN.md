@@ -351,7 +351,7 @@ Call `pushHistory()` before any mutating action (add/remove/move-commit, not on 
 - [x] 3. **Phase 2: Persistence.** Export/import JSON (Step 4), PNG snapshot export, versioned schema, verify exact coordinate restoration with physics disabled.
 - [x] 4. **Phase 2b: Bulk import.** CSV/XLSX/JSON upload with column-mapping UI and validation (Step 4b) — prioritize alongside Phase 2 since it's high-value for Systems Mode specifically.
 - [x] 5. **Phase 3: Tactics-specific features.** Zone overlay (Step 5), locking (Step 3), background images for the four sports, arrow styling for movement.
-- [ ] 6. **Phase 4: Editing quality-of-life.** Undo/redo (Step 6), keyboard shortcuts, contextual side panel / bottom sheet editor.
+- [x] 6. **Phase 4: Editing quality-of-life.** Undo/redo (Step 6), keyboard shortcuts, contextual side panel / bottom sheet editor.
 - [ ] 7. **Phase 5: Mobile optimization.** FAB-based Pan/Edit toggle, bottom sheets, inflated hitboxes, grid snapping.
 - [ ] 8. **Phase 6 (stretch): Two landing pages.** Split Systems and Tactics into separate entry points/branding sharing the same engine and JSON schema, so each audience gets a purpose-fit first impression.
 
