@@ -57,8 +57,28 @@
                 <option value="systems">Systems Mode</option>
                 <option value="tactics">Tactics Mode</option>
             </select>
+            <select id="pitch-switch" class="mb-2 w-full p-1 border rounded text-sm hidden">
+                <option value="none">No Pitch</option>
+                <option value="soccer">Soccer</option>
+                <option value="rugby">Rugby</option>
+                <option value="hockey">Hockey</option>
+                <option value="cricket">Cricket</option>
+            </select>
             <button id="btn-add-node" class="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Add Node</button>
-            <button id="btn-add-edge" class="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Add Edge</button>
+            <div class="flex gap-2 mb-2">
+                <button id="btn-add-edge" class="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm w-1/2">Add Edge</button>
+                <select id="edge-style" class="w-1/2 p-1 border rounded text-sm">
+                    <option value="solid">Solid</option>
+                    <option value="dashed">Dashed</option>
+                    <option value="curved">Curved</option>
+                </select>
+            </div>
+            <button id="btn-add-zone" class="bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Add Zone</button>
+            <button id="btn-toggle-lock" class="bg-orange-500 hover:bg-orange-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Lock/Unlock Selected</button>
+            <div class="flex gap-2 mb-2 mt-2">
+                <button id="btn-undo" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded text-sm w-1/2">Undo</button>
+                <button id="btn-redo" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded text-sm w-1/2">Redo</button>
+            </div>
             <div class="h-px bg-gray-300 my-2"></div>
             <button id="btn-export-json" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Export JSON</button>
             <button id="btn-import-json" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Import JSON</button>
@@ -68,6 +88,28 @@
 
             <input type="file" id="input-import-json" accept=".json" class="hidden" />
             <input type="file" id="input-bulk-import" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" class="hidden" />
+        </div>
+
+        <!-- Contextual Side Panel -->
+        <div id="side-panel" class="absolute top-0 right-0 h-full w-64 bg-white shadow-lg transform translate-x-full transition-transform duration-300 ease-in-out z-50 p-4 border-l border-gray-200">
+            <h2 id="panel-title" class="font-bold text-lg mb-4">Edit Element</h2>
+            <input type="hidden" id="edit-id" />
+            <input type="hidden" id="edit-type" />
+
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Label</label>
+                <input type="text" id="edit-label" class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+
+            <div id="edit-color-group" class="mb-4 hidden">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Color / Group</label>
+                <input type="text" id="edit-color" class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="#ff0000 or group name" />
+            </div>
+
+            <div class="flex justify-between mt-6">
+                <button id="btn-panel-cancel" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded text-sm w-1/2 mr-2">Cancel</button>
+                <button id="btn-panel-save" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm w-1/2 ml-2">Save</button>
+            </div>
         </div>
 
         <!-- Column Mapping Modal -->
@@ -119,7 +161,25 @@
         let physicsEnabled = true;
         const options = {
             interaction: { dragNodes: true, hover: true },
-            manipulation: { enabled: false },
+            manipulation: {
+                enabled: false,
+                addNode: function(nodeData, callback) {
+                    pushHistory();
+                    nodeData.label = nodeData.label || 'New Node';
+                    callback(nodeData);
+                },
+                addEdge: function(edgeData, callback) {
+                    pushHistory();
+                    const style = document.getElementById('edge-style').value;
+                    edgeData.arrows = 'to';
+                    if (style === 'dashed') {
+                        edgeData.dashes = true;
+                    } else if (style === 'curved') {
+                        edgeData.smooth = { type: 'curvedCW' };
+                    }
+                    callback(edgeData);
+                }
+            },
             physics: {
                 enabled: physicsEnabled,
                 barnesHut: { gravitationalConstant: -2000 }
@@ -144,32 +204,136 @@
         });
 
         // Mode Switching
+        let currentPitchUrl = null;
+        let currentPitchImage = null;
+
+        function applyPitchBackground() {
+            if (currentPitchUrl) {
+                URL.revokeObjectURL(currentPitchUrl);
+                currentPitchUrl = null;
+            }
+            currentPitchImage = null;
+
+            const pitch = document.getElementById('pitch-switch').value;
+            if (pitch === 'none' || document.getElementById('mode-switch').value !== 'tactics') {
+                network.redraw(); // force a redraw to clear the background
+                return;
+            }
+
+            let svgStr = '';
+            if (pitch === 'soccer') {
+                svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1050 680" width="1050" height="680">
+                    <rect width="1050" height="680" fill="#4ade80" />
+                    <rect x="10" y="10" width="1030" height="660" fill="none" stroke="white" stroke-width="4" />
+                    <line x1="525" y1="10" x2="525" y2="670" stroke="white" stroke-width="4" />
+                    <circle cx="525" cy="340" r="91.5" fill="none" stroke="white" stroke-width="4" />
+                    <rect x="10" y="138.5" width="165" height="403" fill="none" stroke="white" stroke-width="4" />
+                    <rect x="875" y="138.5" width="165" height="403" fill="none" stroke="white" stroke-width="4" />
+                    <rect x="10" y="248.5" width="55" height="183" fill="none" stroke="white" stroke-width="4" />
+                    <rect x="985" y="248.5" width="55" height="183" fill="none" stroke="white" stroke-width="4" />
+                </svg>`;
+            } else if (pitch === 'rugby') {
+                svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 700" width="1440" height="700">
+                    <rect width="1440" height="700" fill="#4ade80" />
+                    <rect x="10" y="10" width="1420" height="680" fill="none" stroke="white" stroke-width="4" />
+                    <line x1="230" y1="10" x2="230" y2="690" stroke="white" stroke-width="4" />
+                    <line x1="1210" y1="10" x2="1210" y2="690" stroke="white" stroke-width="4" />
+                    <line x1="450" y1="10" x2="450" y2="690" stroke="white" stroke-width="4" />
+                    <line x1="990" y1="10" x2="990" y2="690" stroke="white" stroke-width="4" />
+                    <line x1="720" y1="10" x2="720" y2="690" stroke="white" stroke-width="4" />
+                    <line x1="620" y1="10" x2="620" y2="690" stroke="white" stroke-width="4" stroke-dasharray="20,20" />
+                    <line x1="820" y1="10" x2="820" y2="690" stroke="white" stroke-width="4" stroke-dasharray="20,20" />
+                </svg>`;
+            } else if (pitch === 'hockey') {
+                svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 914 550" width="914" height="550">
+                    <rect width="914" height="550" fill="#2563eb" />
+                    <rect x="10" y="10" width="894" height="530" fill="none" stroke="white" stroke-width="4" />
+                    <line x1="457" y1="10" x2="457" y2="540" stroke="white" stroke-width="4" />
+                    <line x1="240" y1="10" x2="240" y2="540" stroke="white" stroke-width="4" />
+                    <line x1="674" y1="10" x2="674" y2="540" stroke="white" stroke-width="4" />
+                    <path d="M 156.3 10 A 146.3 146.3 0 0 0 156.3 540" fill="none" stroke="white" stroke-width="4" />
+                    <path d="M 757.7 10 A 146.3 146.3 0 0 1 757.7 540" fill="none" stroke="white" stroke-width="4" />
+                </svg>`;
+            } else if (pitch === 'cricket') {
+                svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1370 1370" width="1370" height="1370">
+                    <rect width="1370" height="1370" fill="#4ade80" />
+                    <circle cx="685" cy="685" r="670" fill="none" stroke="white" stroke-width="4" />
+                    <circle cx="685" cy="685" r="274" fill="none" stroke="white" stroke-width="4" stroke-dasharray="10,10" />
+                    <rect x="670" y="584" width="30" height="201" fill="#d4d4d8" />
+                </svg>`;
+            }
+
+            if (svgStr) {
+                const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+                currentPitchUrl = URL.createObjectURL(blob);
+                currentPitchImage = new Image();
+                currentPitchImage.onload = () => {
+                    network.redraw();
+                };
+                currentPitchImage.src = currentPitchUrl;
+            }
+        }
+
+        // Draw pitch on canvas before drawing nodes
+        network.on("beforeDrawing", function(ctx) {
+            if (currentPitchImage && currentPitchImage.complete && document.getElementById('mode-switch').value === 'tactics') {
+                // Determine appropriate scaling to center the image on the canvas.
+                // It's already drawn in canvas coordinates (pan/zoom applied automatically by ctx),
+                // so we want it centered at (0, 0)
+                const imgW = currentPitchImage.width;
+                const imgH = currentPitchImage.height;
+                ctx.drawImage(currentPitchImage, -imgW / 2, -imgH / 2, imgW, imgH);
+            }
+        });
+
         function setMode(mode, backgroundUrl = null) {
             const physicsBtn = document.getElementById('btn-physics');
+            const pitchSwitch = document.getElementById('pitch-switch');
             if (mode === 'tactics') {
                 physicsEnabled = false;
                 network.setOptions({ physics: { enabled: false } });
                 physicsBtn.classList.remove('bg-blue-500');
                 physicsBtn.classList.add('bg-gray-500');
+                pitchSwitch.classList.remove('hidden');
 
                 if (backgroundUrl) {
-                    container.style.backgroundImage = `url('${backgroundUrl}')`;
-                    container.style.backgroundSize = 'contain';
-                    container.style.backgroundRepeat = 'no-repeat';
-                    container.style.backgroundPosition = 'center';
+                    if (currentPitchUrl) {
+                        URL.revokeObjectURL(currentPitchUrl);
+                        currentPitchUrl = null;
+                    }
+                    currentPitchImage = new Image();
+                    currentPitchImage.onload = () => {
+                        network.redraw();
+                    };
+                    currentPitchImage.src = backgroundUrl;
+                } else {
+                    applyPitchBackground();
                 }
             } else {
                 physicsEnabled = true;
                 network.setOptions({ physics: { enabled: true } });
                 physicsBtn.classList.remove('bg-gray-500');
                 physicsBtn.classList.add('bg-blue-500');
-                container.style.backgroundImage = 'none';
+                pitchSwitch.classList.add('hidden');
+
+                if (currentPitchUrl) {
+                    URL.revokeObjectURL(currentPitchUrl);
+                    currentPitchUrl = null;
+                }
+                currentPitchImage = null;
+                network.redraw();
             }
         }
 
         document.getElementById('mode-switch').addEventListener('change', (e) => {
             setMode(e.target.value);
         });
+
+        document.getElementById('pitch-switch').addEventListener('change', applyPitchBackground);
+
+        // Hook up Undo/Redo Buttons
+        document.getElementById('btn-undo').addEventListener('click', undo);
+        document.getElementById('btn-redo').addEventListener('click', redo);
 
         // Add Node / Add Edge
         document.getElementById('btn-add-node').addEventListener('click', () => {
@@ -178,6 +342,82 @@
 
         document.getElementById('btn-add-edge').addEventListener('click', () => {
             network.addEdgeMode();
+        });
+
+        // Add Zone
+        let isDrawingZone = false;
+        let currentZonePoints = [];
+
+        document.getElementById('btn-add-zone').addEventListener('click', (e) => {
+            isDrawingZone = !isDrawingZone;
+            const btn = e.target;
+            if (isDrawingZone) {
+                btn.classList.remove('bg-yellow-500', 'hover:bg-yellow-700');
+                btn.classList.add('bg-red-500', 'hover:bg-red-700');
+                btn.textContent = 'Finish Zone (Double Click)';
+                currentZonePoints = [];
+            } else {
+                btn.classList.add('bg-yellow-500', 'hover:bg-yellow-700');
+                btn.classList.remove('bg-red-500', 'hover:bg-red-700');
+                btn.textContent = 'Add Zone';
+                if (currentZonePoints.length > 2) {
+                    pushHistory();
+                    zones.add({
+                        id: 'zone-' + Date.now(),
+                        points: currentZonePoints,
+                        color: 'rgba(239, 68, 68, 0.2)', // Tailwind red-500 semi-transparent
+                        stroke: '#ef4444'
+                    });
+                    renderZoneOverlay();
+                }
+                currentZonePoints = [];
+            }
+        });
+
+        network.on("click", function (params) {
+            if (isDrawingZone && params.pointer) {
+                currentZonePoints.push([params.pointer.canvas.x, params.pointer.canvas.y]);
+
+                // Draw temporary preview point
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', params.pointer.canvas.x);
+                circle.setAttribute('cy', params.pointer.canvas.y);
+                circle.setAttribute('r', '4');
+                circle.setAttribute('fill', '#ef4444');
+                // Temporary preview points belong to a specific group or class so they can be cleaned up
+                circle.classList.add('temp-zone-point');
+                svgOverlay.appendChild(circle);
+            }
+        });
+
+        network.on("doubleClick", function (params) {
+            if (isDrawingZone) {
+                document.getElementById('btn-add-zone').click(); // Toggle off and save
+            }
+        });
+
+        network.on("dragStart", function(params) {
+            if (params.nodes && params.nodes.length > 0) {
+                pushHistory();
+            }
+        });
+
+        // Toggle Node Lock
+        document.getElementById('btn-toggle-lock').addEventListener('click', () => {
+            const selectedNodeIds = network.getSelectedNodes();
+            if (selectedNodeIds.length === 0) return;
+
+            pushHistory();
+            const updates = selectedNodeIds.map(id => {
+                const node = nodes.get(id);
+                // In vis-network, 'fixed' can be a boolean or an object {x: boolean, y: boolean}
+                const isFixed = node.fixed === true || (node.fixed && node.fixed.x && node.fixed.y);
+                return {
+                    id: id,
+                    fixed: { x: !isFixed, y: !isFixed }
+                };
+            });
+            nodes.update(updates);
         });
 
         // --- 2. SVG Overlay Logic ---
@@ -196,7 +436,8 @@
 
         // Render the zones as SVG polygons
         function renderZoneOverlay() {
-            svgOverlay.innerHTML = ''; // clear existing
+            // Remove existing polygons and temporary points
+            Array.from(svgOverlay.querySelectorAll('polygon, .temp-zone-point')).forEach(el => el.remove());
 
             zones.get().forEach(zone => {
                 const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
@@ -253,6 +494,149 @@
              syncSvgTransform();
         });
 
+        // --- Undo / Redo Engine ---
+        const historyStack = { past: [], future: [] };
+
+        function snapshot() {
+            // Get current positions to save exact layout if physics is off
+            const positions = network.getPositions();
+            const currentNodes = nodes.get().map(node => {
+                if (positions[node.id]) {
+                    return { ...node, x: positions[node.id].x, y: positions[node.id].y };
+                }
+                return node;
+            });
+            return JSON.stringify({ nodes: currentNodes, edges: edges.get(), zones: zones.get() });
+        }
+
+        function pushHistory() {
+            historyStack.past.push(snapshot());
+            historyStack.future = [];
+            if (historyStack.past.length > 50) historyStack.past.shift();
+        }
+
+        function undo() {
+            if (!historyStack.past.length) return;
+            historyStack.future.push(snapshot());
+            restoreSnapshot(historyStack.past.pop());
+        }
+
+        function redo() {
+            if (!historyStack.future.length) return;
+            historyStack.past.push(snapshot());
+            restoreSnapshot(historyStack.future.pop());
+        }
+
+        function restoreSnapshot(snap) {
+            const state = JSON.parse(snap);
+            nodes.clear(); edges.clear(); zones.clear();
+            nodes.add(state.nodes); edges.add(state.edges); zones.add(state.zones);
+            renderZoneOverlay();
+        }
+
+        // --- Contextual Side Panel Logic ---
+        const sidePanel = document.getElementById('side-panel');
+
+        function openSidePanel(type, id) {
+            const item = type === 'node' ? nodes.get(id) : edges.get(id);
+            if (!item) return;
+
+            document.getElementById('edit-id').value = id;
+            document.getElementById('edit-type').value = type;
+            document.getElementById('panel-title').textContent = type === 'node' ? 'Edit Node' : 'Edit Edge';
+            document.getElementById('edit-label').value = item.label || '';
+
+            if (type === 'node') {
+                document.getElementById('edit-color-group').classList.remove('hidden');
+                document.getElementById('edit-color').value = item.group || item.color || '';
+            } else {
+                document.getElementById('edit-color-group').classList.add('hidden');
+            }
+
+            sidePanel.classList.remove('translate-x-full');
+        }
+
+        function closeSidePanel() {
+            sidePanel.classList.add('translate-x-full');
+        }
+
+        network.on("selectNode", function (params) {
+            if (params.nodes.length === 1) {
+                openSidePanel('node', params.nodes[0]);
+            } else {
+                closeSidePanel();
+            }
+        });
+
+        network.on("selectEdge", function (params) {
+            if (params.nodes.length === 0 && params.edges.length === 1) {
+                openSidePanel('edge', params.edges[0]);
+            } else if (params.nodes.length !== 1) {
+                closeSidePanel();
+            }
+        });
+
+        network.on("deselectNode", closeSidePanel);
+        network.on("deselectEdge", closeSidePanel);
+
+        document.getElementById('btn-panel-cancel').addEventListener('click', closeSidePanel);
+
+        document.getElementById('btn-panel-save').addEventListener('click', () => {
+            const id = document.getElementById('edit-id').value;
+            const type = document.getElementById('edit-type').value;
+            const label = document.getElementById('edit-label').value;
+            const colorGroup = document.getElementById('edit-color').value;
+
+            if (!id || !type) return;
+
+            pushHistory();
+
+            if (type === 'node') {
+                const updateData = { id: id, label: label };
+                // A simplistic check: if it looks like hex, set color, else set group
+                if (colorGroup.startsWith('#') || colorGroup.startsWith('rgb')) {
+                    updateData.color = colorGroup;
+                    updateData.group = null;
+                } else if (colorGroup) {
+                    updateData.group = colorGroup;
+                }
+                nodes.update(updateData);
+            } else if (type === 'edge') {
+                edges.update({ id: id, label: label });
+            }
+
+            closeSidePanel();
+        });
+
+
+        // Keyboard Shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Only trigger if we aren't typing in an input/textarea
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+
+            // Undo / Redo
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+                e.preventDefault();
+                if (e.shiftKey) {
+                    redo();
+                } else {
+                    undo();
+                }
+            }
+
+            // Delete Selection
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                const selectedNodes = network.getSelectedNodes();
+                const selectedEdges = network.getSelectedEdges();
+
+                if (selectedNodes.length > 0 || selectedEdges.length > 0) {
+                    e.preventDefault();
+                    pushHistory();
+                    network.deleteSelected();
+                }
+            }
+        });
+
         // --- 3. JSON Export & Import Logic ---
 
         function exportGraph() {
@@ -298,6 +682,7 @@
                     console.warn("Importing unversioned or different version graph.", payload.version);
                 }
 
+                pushHistory();
                 nodes.clear();
                 edges.clear();
 
@@ -626,6 +1011,7 @@
             }
 
             // Commit
+            pushHistory();
             nodes.add(finalNodesToAdd);
             edges.add(mappedEdges);
 
