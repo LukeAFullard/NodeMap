@@ -7,6 +7,9 @@
     <!-- vis-network CSS & JS -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/dist/vis-network.min.css" rel="stylesheet" type="text/css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/vis-network.min.js"></script>
+    <!-- PapaParse and SheetJS for Bulk Import -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <!-- Tailwind for quick styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -60,7 +63,35 @@
             <button id="btn-export-json" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Export JSON</button>
             <button id="btn-import-json" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Import JSON</button>
             <button id="btn-export-png" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Export PNG</button>
+            <div class="h-px bg-gray-300 my-2"></div>
+            <button id="btn-bulk-import" class="bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Bulk Import (CSV/XLSX)</button>
+
             <input type="file" id="input-import-json" accept=".json" class="hidden" />
+            <input type="file" id="input-bulk-import" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" class="hidden" />
+        </div>
+
+        <!-- Column Mapping Modal -->
+        <div id="mapping-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+            <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+                <div class="mt-3 text-center">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900">Map Columns</h3>
+                    <div class="mt-2 px-7 py-3 text-left">
+                        <div id="mapping-errors" class="text-red-500 text-sm mb-2 hidden"></div>
+                        <form id="mapping-form">
+                            <!-- Injected fields will go here -->
+                            <div id="mapping-fields" class="space-y-3"></div>
+                        </form>
+                    </div>
+                    <div class="items-center px-4 py-3">
+                        <button id="btn-commit-import" class="px-4 py-2 bg-blue-500 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-300">
+                            Validate & Import
+                        </button>
+                        <button id="btn-cancel-import" class="mt-3 px-4 py-2 bg-gray-100 text-gray-700 text-base font-medium rounded-md w-full shadow-sm hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-300">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -98,16 +129,28 @@
         const network = new vis.Network(container, data, options);
 
         // Toggle physics button
-        document.getElementById('btn-physics').addEventListener('click', () => {
+        document.getElementById('btn-physics').addEventListener('click', (e) => {
             physicsEnabled = !physicsEnabled;
             network.setOptions({ physics: { enabled: physicsEnabled } });
+
+            const physicsBtn = e.target;
+            if (physicsEnabled) {
+                physicsBtn.classList.remove('bg-gray-500');
+                physicsBtn.classList.add('bg-blue-500');
+            } else {
+                physicsBtn.classList.remove('bg-blue-500');
+                physicsBtn.classList.add('bg-gray-500');
+            }
         });
 
         // Mode Switching
         function setMode(mode, backgroundUrl = null) {
+            const physicsBtn = document.getElementById('btn-physics');
             if (mode === 'tactics') {
                 physicsEnabled = false;
                 network.setOptions({ physics: { enabled: false } });
+                physicsBtn.classList.remove('bg-blue-500');
+                physicsBtn.classList.add('bg-gray-500');
 
                 if (backgroundUrl) {
                     container.style.backgroundImage = `url('${backgroundUrl}')`;
@@ -118,6 +161,8 @@
             } else {
                 physicsEnabled = true;
                 network.setOptions({ physics: { enabled: true } });
+                physicsBtn.classList.remove('bg-gray-500');
+                physicsBtn.classList.add('bg-blue-500');
                 container.style.backgroundImage = 'none';
             }
         }
@@ -232,13 +277,17 @@
                 isPhysicsEnabled: physicsEnabled
             };
 
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload, null, 2));
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const url = window.URL.createObjectURL(blob);
+
             const a = document.createElement('a');
-            a.setAttribute("href", dataStr);
+            a.setAttribute("href", url);
             a.setAttribute("download", "graph_workspace.json");
             document.body.appendChild(a);
             a.click();
             a.remove();
+
+            window.URL.revokeObjectURL(url);
         }
 
         function importGraph(jsonString) {
@@ -270,6 +319,17 @@
                     network.setOptions({ physics: { enabled: true } });
                 }
 
+                // Keep the physics button visually in sync if necessary.
+                // Currently it has no active/inactive styling, but if it did, we'd update it here.
+                const physicsBtn = document.getElementById('btn-physics');
+                if (physicsEnabled) {
+                    physicsBtn.classList.remove('bg-gray-500');
+                    physicsBtn.classList.add('bg-blue-500');
+                } else {
+                    physicsBtn.classList.remove('bg-blue-500');
+                    physicsBtn.classList.add('bg-gray-500');
+                }
+
             } catch (error) {
                 console.error("Failed to import JSON", error);
                 alert("Failed to parse JSON file.");
@@ -295,7 +355,285 @@
             }
         });
 
-        // --- 4. PNG Export Logic ---
+        // --- 4. Bulk Import Logic ---
+
+        let pendingImportData = null; // Store parsed data before mapping
+        let detectedHeaders = [];
+
+        document.getElementById('btn-bulk-import').addEventListener('click', () => {
+            document.getElementById('input-bulk-import').click();
+        });
+
+        document.getElementById('input-bulk-import').addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const filename = file.name.toLowerCase();
+            const isCsv = filename.endsWith('.csv');
+            const isXlsx = filename.endsWith('.xlsx') || filename.endsWith('.xls');
+
+            if (isCsv) {
+                parseCsvForMapping(file);
+            } else if (isXlsx) {
+                parseXlsxForMapping(file);
+            } else {
+                alert("Unsupported file format.");
+            }
+
+            // Reset input
+            event.target.value = '';
+        });
+
+        function parseCsvForMapping(file) {
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: (results) => {
+                    pendingImportData = { Nodes: [], Edges: results.data, IsGeneric: true }; // Treat generic CSV as edges initially, we'll map both
+                    detectedHeaders = results.meta.fields || [];
+                    if (results.data.length > 0 && detectedHeaders.length === 0) {
+                        detectedHeaders = Object.keys(results.data[0]);
+                    }
+                    showMappingModal();
+                },
+                error: (error) => {
+                    alert("Error parsing CSV: " + error.message);
+                }
+            });
+        }
+
+        function parseXlsxForMapping(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const workbook = XLSX.read(e.target.result, { type: 'binary' });
+
+                    const sheets = {};
+                    let firstSheetHeaders = [];
+
+                    workbook.SheetNames.forEach(name => {
+                        const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[name]);
+                        sheets[name] = jsonData;
+                        if (firstSheetHeaders.length === 0 && jsonData.length > 0) {
+                             firstSheetHeaders = Object.keys(jsonData[0]);
+                        }
+                    });
+
+                    // Check if it follows the "two-file style" logic (Nodes and Edges sheets)
+                    if (sheets['Nodes'] && sheets['Edges']) {
+                         pendingImportData = { Nodes: sheets['Nodes'], Edges: sheets['Edges'], IsGeneric: false };
+
+                         // Get headers from both
+                         let nHeaders = sheets['Nodes'].length > 0 ? Object.keys(sheets['Nodes'][0]) : [];
+                         let eHeaders = sheets['Edges'].length > 0 ? Object.keys(sheets['Edges'][0]) : [];
+                         detectedHeaders = [...new Set([...nHeaders, ...eHeaders])];
+                    } else {
+                         // Generic table, treat similar to CSV edge-list
+                         const firstSheetName = workbook.SheetNames[0];
+                         pendingImportData = { Nodes: [], Edges: sheets[firstSheetName], IsGeneric: true };
+                         detectedHeaders = firstSheetHeaders;
+                    }
+
+                    showMappingModal();
+                } catch(error) {
+                    alert("Error parsing XLSX: " + error.message);
+                }
+            };
+            reader.readAsBinaryString(file);
+        }
+
+        function showMappingModal() {
+            const modal = document.getElementById('mapping-modal');
+            const fieldsContainer = document.getElementById('mapping-fields');
+            const errorsContainer = document.getElementById('mapping-errors');
+
+            fieldsContainer.innerHTML = '';
+            errorsContainer.classList.add('hidden');
+            errorsContainer.textContent = '';
+
+            const requiredFields = [
+                { id: 'map-node-id', label: 'Node ID', isRequired: false }, // Optional if generic edge list where from/to are enough
+                { id: 'map-node-label', label: 'Node Label', isRequired: false },
+                { id: 'map-node-group', label: 'Node Group (Color)', isRequired: false },
+                { id: 'map-edge-from', label: 'Edge From', isRequired: true },
+                { id: 'map-edge-to', label: 'Edge To', isRequired: true },
+                { id: 'map-edge-label', label: 'Edge Label', isRequired: false }
+            ];
+
+            requiredFields.forEach(field => {
+                const div = document.createElement('div');
+
+                const label = document.createElement('label');
+                label.htmlFor = field.id;
+                label.className = "block text-sm font-medium text-gray-700";
+                label.textContent = field.label + " ";
+                if (field.isRequired) {
+                    const span = document.createElement('span');
+                    span.className = "text-red-500";
+                    span.textContent = "*";
+                    label.appendChild(span);
+                }
+                div.appendChild(label);
+
+                const select = document.createElement('select');
+                select.id = field.id;
+                select.className = "mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm";
+
+                const defaultOption = document.createElement('option');
+                defaultOption.value = "";
+                defaultOption.textContent = "-- Select Column --";
+                select.appendChild(defaultOption);
+
+                detectedHeaders.forEach(h => {
+                    const opt = document.createElement('option');
+                    opt.value = h;
+                    opt.textContent = h;
+                    select.appendChild(opt);
+                });
+
+                div.appendChild(select);
+                fieldsContainer.appendChild(div);
+
+                // Auto-select if there's a strong match (case-insensitive)
+                const match = detectedHeaders.find(h => h.toLowerCase() === field.label.toLowerCase() ||
+                                                        h.toLowerCase() === field.id.replace('map-', '').replace('-', ' '));
+                if (match) {
+                    select.value = match;
+                } else if (field.id === 'map-edge-from' && detectedHeaders.find(h => h.toLowerCase() === 'from')) {
+                    select.value = detectedHeaders.find(h => h.toLowerCase() === 'from');
+                } else if (field.id === 'map-edge-to' && detectedHeaders.find(h => h.toLowerCase() === 'to')) {
+                    select.value = detectedHeaders.find(h => h.toLowerCase() === 'to');
+                } else if (field.id === 'map-node-id' && detectedHeaders.find(h => h.toLowerCase() === 'id')) {
+                    select.value = detectedHeaders.find(h => h.toLowerCase() === 'id');
+                } else if (field.id === 'map-node-label' && detectedHeaders.find(h => h.toLowerCase() === 'label')) {
+                    select.value = detectedHeaders.find(h => h.toLowerCase() === 'label');
+                }
+            });
+
+            modal.classList.remove('hidden');
+        }
+
+        document.getElementById('btn-cancel-import').addEventListener('click', () => {
+            document.getElementById('mapping-modal').classList.add('hidden');
+            pendingImportData = null;
+        });
+
+        document.getElementById('btn-commit-import').addEventListener('click', () => {
+            const mapNodeId = document.getElementById('map-node-id').value;
+            const mapNodeLabel = document.getElementById('map-node-label').value;
+            const mapNodeGroup = document.getElementById('map-node-group').value;
+            const mapEdgeFrom = document.getElementById('map-edge-from').value;
+            const mapEdgeTo = document.getElementById('map-edge-to').value;
+            const mapEdgeLabel = document.getElementById('map-edge-label').value;
+
+            const errorsContainer = document.getElementById('mapping-errors');
+            errorsContainer.classList.add('hidden');
+            errorsContainer.innerHTML = '';
+            let errors = [];
+
+            if (!mapEdgeFrom || !mapEdgeTo) {
+                errors.push("Edge From and Edge To are required.");
+            }
+
+            if (errors.length > 0) {
+                errorsContainer.innerHTML = errors.join('<br>');
+                errorsContainer.classList.remove('hidden');
+                return;
+            }
+
+            const mappedNodes = [];
+            const mappedEdges = [];
+            const seenNodeIds = new Set();
+
+            // Function to safely add a node
+            const addMappedNode = (id, label, group) => {
+                if (id === undefined || id === null || id === '') return;
+                if (!seenNodeIds.has(id)) {
+                    const nodeObj = { id: id, label: label || id };
+                    if (group) nodeObj.group = group;
+                    mappedNodes.push(nodeObj);
+                    seenNodeIds.add(id);
+                }
+            };
+
+            // Process explicit Nodes (if any from two-file format)
+            if (pendingImportData.Nodes && pendingImportData.Nodes.length > 0) {
+                pendingImportData.Nodes.forEach(row => {
+                    const id = mapNodeId ? row[mapNodeId] : row['id'] || row['ID']; // Fallback
+                    const label = mapNodeLabel ? row[mapNodeLabel] : row['label'] || row['Label'];
+                    const group = mapNodeGroup ? row[mapNodeGroup] : row['group'] || row['Group'];
+                    if (id) {
+                        addMappedNode(id, label, group);
+                    }
+                });
+            }
+
+            // Process Edges
+            if (pendingImportData.Edges && pendingImportData.Edges.length > 0) {
+                pendingImportData.Edges.forEach(row => {
+                    const from = row[mapEdgeFrom];
+                    const to = row[mapEdgeTo];
+                    const label = mapEdgeLabel ? row[mapEdgeLabel] : undefined;
+
+                    if (from !== undefined && to !== undefined) {
+                        mappedEdges.push({ from: from, to: to, label: label });
+
+                        // Auto-create nodes if they don't exist yet (essential for edge-list style CSV)
+                        if (pendingImportData.IsGeneric) {
+                            addMappedNode(from, from, null);
+                            addMappedNode(to, to, null);
+                        }
+                    }
+                });
+            }
+
+            // Check against existing nodes to prevent duplicate ID errors in vis-network
+            const existingNodeIds = new Set(nodes.getIds());
+            const finalNodesToAdd = mappedNodes.filter(n => !existingNodeIds.has(n.id));
+
+            // Validate references
+            const allValidNodeIds = new Set([...existingNodeIds, ...seenNodeIds]);
+            mappedEdges.forEach(e => {
+                if (!allValidNodeIds.has(e.from) || !allValidNodeIds.has(e.to)) {
+                    errors.push(`Edge references missing node: ${e.from} → ${e.to}`);
+                }
+            });
+
+            if (errors.length > 0) {
+                // We show only the first 5 errors to avoid huge modals
+                errorsContainer.innerHTML = '';
+                const maxErrors = errors.slice(0, 5);
+                maxErrors.forEach(errText => {
+                    const el = document.createElement('div');
+                    el.textContent = errText;
+                    errorsContainer.appendChild(el);
+                });
+                if (errors.length > 5) {
+                    const el = document.createElement('div');
+                    el.textContent = `...and ${errors.length - 5} more.`;
+                    errorsContainer.appendChild(el);
+                }
+
+                errorsContainer.classList.remove('hidden');
+                return;
+            }
+
+            const totalNodes = existingNodeIds.size + finalNodesToAdd.length;
+            if (totalNodes > 1000) {
+                if (!confirm(`This will result in ${totalNodes} nodes. Physics simulation may be slow. Continue?`)) {
+                    return;
+                }
+            }
+
+            // Commit
+            nodes.add(finalNodesToAdd);
+            edges.add(mappedEdges);
+
+            document.getElementById('mapping-modal').classList.add('hidden');
+            pendingImportData = null;
+        });
+
+        // --- 5. PNG Export Logic ---
 
         function exportPng() {
             const networkCanvas = document.querySelector('#network-canvas canvas');
@@ -316,7 +654,11 @@
             ctx.drawImage(networkCanvas, 0, 0);
 
             // Serialize the SVG overlay and draw it onto the canvas
-            const svgData = new XMLSerializer().serializeToString(svgOverlay);
+            let svgData = new XMLSerializer().serializeToString(svgOverlay);
+
+            // Nitpick fix: Explicitly inject width and height into the root <svg> tag for better cross-browser compatibility
+            svgData = svgData.replace(/<svg([^>]+)>/, `<svg$1 width="${networkCanvas.width}" height="${networkCanvas.height}">`);
+
             const DOMURL = window.URL || window.webkitURL || window;
             const img = new Image();
 
