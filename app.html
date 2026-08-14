@@ -900,7 +900,7 @@
             }
         }
 
-        function exportHtml() {
+        async function exportHtml() {
             // Re-use logic to get true payload state
             const positions = network.getPositions();
             const currentNodes = nodes.get().map(node => {
@@ -926,12 +926,27 @@
                 payload.pitch = document.getElementById('pitch-switch').value;
             }
 
-            // Create a replica of the current HTML document string
-            const htmlString = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+            // Sanitize JSON payload to prevent premature script tag closure if HTML is in node labels
+            const safePayload = JSON.stringify(payload).replace(/</g, '\\u003c');
+
+            // Attempt to fetch a pristine, stateless copy of the HTML structure
+            let htmlString = '';
+            try {
+                const url = window.location.href.split('?')[0];
+                const res = await fetch(url);
+                if (res.ok) {
+                    htmlString = await res.text();
+                } else {
+                    throw new Error('Fetch failed');
+                }
+            } catch (err) {
+                // Fallback to outerHTML if running locally over file:// or fetch fails
+                htmlString = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+            }
 
             // Inject the initial data payload right before closing body
             // Note: we break up the closing script tag so the browser parser doesn't choke on it
-            const injectionStr = '<script>window.__INITIAL_DATA__ = ' + JSON.stringify(payload) + ';</' + 'script></body>';
+            const injectionStr = '<script>window.__INITIAL_DATA__ = ' + safePayload + ';</' + 'script></body>';
             const newHtmlString = htmlString.replace('</body>', injectionStr);
 
             const blob = new Blob([newHtmlString], { type: 'text/html;charset=utf-8' });
