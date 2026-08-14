@@ -57,8 +57,24 @@
                 <option value="systems">Systems Mode</option>
                 <option value="tactics">Tactics Mode</option>
             </select>
+            <select id="pitch-switch" class="mb-2 w-full p-1 border rounded text-sm hidden">
+                <option value="none">No Pitch</option>
+                <option value="soccer">Soccer</option>
+                <option value="rugby">Rugby</option>
+                <option value="hockey">Hockey</option>
+                <option value="cricket">Cricket</option>
+            </select>
             <button id="btn-add-node" class="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Add Node</button>
-            <button id="btn-add-edge" class="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Add Edge</button>
+            <div class="flex gap-2 mb-2">
+                <button id="btn-add-edge" class="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm w-1/2">Add Edge</button>
+                <select id="edge-style" class="w-1/2 p-1 border rounded text-sm">
+                    <option value="solid">Solid</option>
+                    <option value="dashed">Dashed</option>
+                    <option value="curved">Curved</option>
+                </select>
+            </div>
+            <button id="btn-add-zone" class="bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Add Zone</button>
+            <button id="btn-toggle-lock" class="bg-orange-500 hover:bg-orange-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Lock/Unlock Selected</button>
             <div class="h-px bg-gray-300 my-2"></div>
             <button id="btn-export-json" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Export JSON</button>
             <button id="btn-import-json" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Import JSON</button>
@@ -119,7 +135,19 @@
         let physicsEnabled = true;
         const options = {
             interaction: { dragNodes: true, hover: true },
-            manipulation: { enabled: false },
+            manipulation: {
+                enabled: false,
+                addEdge: function(edgeData, callback) {
+                    const style = document.getElementById('edge-style').value;
+                    edgeData.arrows = 'to';
+                    if (style === 'dashed') {
+                        edgeData.dashes = true;
+                    } else if (style === 'curved') {
+                        edgeData.smooth = { type: 'curvedCW' };
+                    }
+                    callback(edgeData);
+                }
+            },
             physics: {
                 enabled: physicsEnabled,
                 barnesHut: { gravitationalConstant: -2000 }
@@ -144,32 +172,132 @@
         });
 
         // Mode Switching
+        let currentPitchUrl = null;
+        let currentPitchImage = null;
+
+        function applyPitchBackground() {
+            if (currentPitchUrl) {
+                URL.revokeObjectURL(currentPitchUrl);
+                currentPitchUrl = null;
+            }
+            currentPitchImage = null;
+
+            const pitch = document.getElementById('pitch-switch').value;
+            if (pitch === 'none' || document.getElementById('mode-switch').value !== 'tactics') {
+                network.redraw(); // force a redraw to clear the background
+                return;
+            }
+
+            let svgStr = '';
+            if (pitch === 'soccer') {
+                svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1050 680" width="1050" height="680">
+                    <rect width="1050" height="680" fill="#4ade80" />
+                    <rect x="10" y="10" width="1030" height="660" fill="none" stroke="white" stroke-width="4" />
+                    <line x1="525" y1="10" x2="525" y2="670" stroke="white" stroke-width="4" />
+                    <circle cx="525" cy="340" r="91.5" fill="none" stroke="white" stroke-width="4" />
+                    <rect x="10" y="138.5" width="165" height="403" fill="none" stroke="white" stroke-width="4" />
+                    <rect x="875" y="138.5" width="165" height="403" fill="none" stroke="white" stroke-width="4" />
+                    <rect x="10" y="248.5" width="55" height="183" fill="none" stroke="white" stroke-width="4" />
+                    <rect x="985" y="248.5" width="55" height="183" fill="none" stroke="white" stroke-width="4" />
+                </svg>`;
+            } else if (pitch === 'rugby') {
+                svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 700" width="1440" height="700">
+                    <rect width="1440" height="700" fill="#4ade80" />
+                    <rect x="10" y="10" width="1420" height="680" fill="none" stroke="white" stroke-width="4" />
+                    <line x1="230" y1="10" x2="230" y2="690" stroke="white" stroke-width="4" />
+                    <line x1="1210" y1="10" x2="1210" y2="690" stroke="white" stroke-width="4" />
+                    <line x1="450" y1="10" x2="450" y2="690" stroke="white" stroke-width="4" />
+                    <line x1="990" y1="10" x2="990" y2="690" stroke="white" stroke-width="4" />
+                    <line x1="720" y1="10" x2="720" y2="690" stroke="white" stroke-width="4" />
+                    <line x1="620" y1="10" x2="620" y2="690" stroke="white" stroke-width="4" stroke-dasharray="20,20" />
+                    <line x1="820" y1="10" x2="820" y2="690" stroke="white" stroke-width="4" stroke-dasharray="20,20" />
+                </svg>`;
+            } else if (pitch === 'hockey') {
+                svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 914 550" width="914" height="550">
+                    <rect width="914" height="550" fill="#2563eb" />
+                    <rect x="10" y="10" width="894" height="530" fill="none" stroke="white" stroke-width="4" />
+                    <line x1="457" y1="10" x2="457" y2="540" stroke="white" stroke-width="4" />
+                    <line x1="240" y1="10" x2="240" y2="540" stroke="white" stroke-width="4" />
+                    <line x1="674" y1="10" x2="674" y2="540" stroke="white" stroke-width="4" />
+                    <path d="M 156.3 10 A 146.3 146.3 0 0 0 156.3 540" fill="none" stroke="white" stroke-width="4" />
+                    <path d="M 757.7 10 A 146.3 146.3 0 0 1 757.7 540" fill="none" stroke="white" stroke-width="4" />
+                </svg>`;
+            } else if (pitch === 'cricket') {
+                svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1370 1370" width="1370" height="1370">
+                    <rect width="1370" height="1370" fill="#4ade80" />
+                    <circle cx="685" cy="685" r="670" fill="none" stroke="white" stroke-width="4" />
+                    <circle cx="685" cy="685" r="274" fill="none" stroke="white" stroke-width="4" stroke-dasharray="10,10" />
+                    <rect x="670" y="584" width="30" height="201" fill="#d4d4d8" />
+                </svg>`;
+            }
+
+            if (svgStr) {
+                const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+                currentPitchUrl = URL.createObjectURL(blob);
+                currentPitchImage = new Image();
+                currentPitchImage.onload = () => {
+                    network.redraw();
+                };
+                currentPitchImage.src = currentPitchUrl;
+            }
+        }
+
+        // Draw pitch on canvas before drawing nodes
+        network.on("beforeDrawing", function(ctx) {
+            if (currentPitchImage && currentPitchImage.complete && document.getElementById('mode-switch').value === 'tactics') {
+                // Determine appropriate scaling to center the image on the canvas.
+                // It's already drawn in canvas coordinates (pan/zoom applied automatically by ctx),
+                // so we want it centered at (0, 0)
+                const imgW = currentPitchImage.width;
+                const imgH = currentPitchImage.height;
+                ctx.drawImage(currentPitchImage, -imgW / 2, -imgH / 2, imgW, imgH);
+            }
+        });
+
         function setMode(mode, backgroundUrl = null) {
             const physicsBtn = document.getElementById('btn-physics');
+            const pitchSwitch = document.getElementById('pitch-switch');
             if (mode === 'tactics') {
                 physicsEnabled = false;
                 network.setOptions({ physics: { enabled: false } });
                 physicsBtn.classList.remove('bg-blue-500');
                 physicsBtn.classList.add('bg-gray-500');
+                pitchSwitch.classList.remove('hidden');
 
                 if (backgroundUrl) {
-                    container.style.backgroundImage = `url('${backgroundUrl}')`;
-                    container.style.backgroundSize = 'contain';
-                    container.style.backgroundRepeat = 'no-repeat';
-                    container.style.backgroundPosition = 'center';
+                    if (currentPitchUrl) {
+                        URL.revokeObjectURL(currentPitchUrl);
+                        currentPitchUrl = null;
+                    }
+                    currentPitchImage = new Image();
+                    currentPitchImage.onload = () => {
+                        network.redraw();
+                    };
+                    currentPitchImage.src = backgroundUrl;
+                } else {
+                    applyPitchBackground();
                 }
             } else {
                 physicsEnabled = true;
                 network.setOptions({ physics: { enabled: true } });
                 physicsBtn.classList.remove('bg-gray-500');
                 physicsBtn.classList.add('bg-blue-500');
-                container.style.backgroundImage = 'none';
+                pitchSwitch.classList.add('hidden');
+
+                if (currentPitchUrl) {
+                    URL.revokeObjectURL(currentPitchUrl);
+                    currentPitchUrl = null;
+                }
+                currentPitchImage = null;
+                network.redraw();
             }
         }
 
         document.getElementById('mode-switch').addEventListener('change', (e) => {
             setMode(e.target.value);
         });
+
+        document.getElementById('pitch-switch').addEventListener('change', applyPitchBackground);
 
         // Add Node / Add Edge
         document.getElementById('btn-add-node').addEventListener('click', () => {
@@ -178,6 +306,74 @@
 
         document.getElementById('btn-add-edge').addEventListener('click', () => {
             network.addEdgeMode();
+        });
+
+        // Add Zone
+        let isDrawingZone = false;
+        let currentZonePoints = [];
+
+        document.getElementById('btn-add-zone').addEventListener('click', (e) => {
+            isDrawingZone = !isDrawingZone;
+            const btn = e.target;
+            if (isDrawingZone) {
+                btn.classList.remove('bg-yellow-500', 'hover:bg-yellow-700');
+                btn.classList.add('bg-red-500', 'hover:bg-red-700');
+                btn.textContent = 'Finish Zone (Double Click)';
+                currentZonePoints = [];
+            } else {
+                btn.classList.add('bg-yellow-500', 'hover:bg-yellow-700');
+                btn.classList.remove('bg-red-500', 'hover:bg-red-700');
+                btn.textContent = 'Add Zone';
+                if (currentZonePoints.length > 2) {
+                    zones.add({
+                        id: 'zone-' + Date.now(),
+                        points: currentZonePoints,
+                        color: 'rgba(239, 68, 68, 0.2)', // Tailwind red-500 semi-transparent
+                        stroke: '#ef4444'
+                    });
+                    renderZoneOverlay();
+                }
+                currentZonePoints = [];
+            }
+        });
+
+        network.on("click", function (params) {
+            if (isDrawingZone && params.pointer) {
+                currentZonePoints.push([params.pointer.canvas.x, params.pointer.canvas.y]);
+
+                // Draw temporary preview point
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', params.pointer.canvas.x);
+                circle.setAttribute('cy', params.pointer.canvas.y);
+                circle.setAttribute('r', '4');
+                circle.setAttribute('fill', '#ef4444');
+                // Temporary preview points belong to a specific group or class so they can be cleaned up
+                circle.classList.add('temp-zone-point');
+                svgOverlay.appendChild(circle);
+            }
+        });
+
+        network.on("doubleClick", function (params) {
+            if (isDrawingZone) {
+                document.getElementById('btn-add-zone').click(); // Toggle off and save
+            }
+        });
+
+        // Toggle Node Lock
+        document.getElementById('btn-toggle-lock').addEventListener('click', () => {
+            const selectedNodeIds = network.getSelectedNodes();
+            if (selectedNodeIds.length === 0) return;
+
+            const updates = selectedNodeIds.map(id => {
+                const node = nodes.get(id);
+                // In vis-network, 'fixed' can be a boolean or an object {x: boolean, y: boolean}
+                const isFixed = node.fixed === true || (node.fixed && node.fixed.x && node.fixed.y);
+                return {
+                    id: id,
+                    fixed: { x: !isFixed, y: !isFixed }
+                };
+            });
+            nodes.update(updates);
         });
 
         // --- 2. SVG Overlay Logic ---
@@ -196,7 +392,8 @@
 
         // Render the zones as SVG polygons
         function renderZoneOverlay() {
-            svgOverlay.innerHTML = ''; // clear existing
+            // Remove existing polygons and temporary points
+            Array.from(svgOverlay.querySelectorAll('polygon, .temp-zone-point')).forEach(el => el.remove());
 
             zones.get().forEach(zone => {
                 const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
