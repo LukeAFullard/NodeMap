@@ -95,6 +95,7 @@
             <button id="btn-export-json" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Export JSON</button>
             <button id="btn-import-json" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Import JSON</button>
             <button id="btn-export-png" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Export PNG</button>
+            <button id="btn-export-html" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Export HTML</button>
             <div class="h-px bg-gray-300 my-2"></div>
             <button id="btn-bulk-import" class="bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-1 px-3 rounded text-sm mb-2 w-full">Bulk Import (CSV/XLSX)</button>
 
@@ -116,6 +117,28 @@
             <div id="edit-color-group" class="mb-4 hidden">
                 <label class="block text-sm font-medium text-gray-700 mb-1">Color / Group</label>
                 <input type="text" id="edit-color" class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="#ff0000 or group name" />
+            </div>
+
+            <div id="edit-shape-group" class="mb-4 hidden">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Shape</label>
+                <select id="edit-shape" class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="ellipse">Ellipse</option>
+                    <option value="circle">Circle</option>
+                    <option value="box">Box</option>
+                    <option value="database">Database</option>
+                    <option value="image">Image</option>
+                    <option value="circularImage">Circular Image</option>
+                </select>
+            </div>
+
+            <div id="edit-size-group" class="mb-4 hidden">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Size</label>
+                <input type="number" id="edit-size" class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="25" />
+            </div>
+
+            <div id="edit-image-group" class="mb-4 hidden">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Image URL</label>
+                <input type="text" id="edit-image" class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="https://..." />
             </div>
 
             <div class="flex justify-between mt-6">
@@ -355,21 +378,60 @@
             setMode(e.target.value);
         });
 
-        // Initialize mode based on URL parameter
+        // Initialize mode based on URL parameter or inline data payload
         window.addEventListener('DOMContentLoaded', () => {
-            const params = new URLSearchParams(window.location.search);
-            const mode = params.get('mode') || 'systems';
-            document.getElementById('mode-switch').value = mode;
+            // Check if we are inside a standalone exported HTML file
+            if (window.__INITIAL_DATA__) {
+                const payload = window.__INITIAL_DATA__;
 
-            // Set dynamic title
-            const titleEl = document.getElementById('app-title');
-            if (mode === 'tactics') {
-                titleEl.textContent = 'Tactics Board';
+                nodes.clear(); edges.clear(); zones.clear();
+                nodes.add(payload.nodes);
+                edges.add(payload.edges);
+                if (payload.zones) zones.add(payload.zones);
+
+                if (payload.mode) {
+                    document.getElementById('mode-switch').value = payload.mode;
+                    const titleEl = document.getElementById('app-title');
+                    if (payload.mode === 'tactics') {
+                        titleEl.textContent = 'Tactics Board';
+                        if (payload.pitch) {
+                            document.getElementById('pitch-switch').value = payload.pitch;
+                        }
+                    } else {
+                        titleEl.textContent = 'Systems Map';
+                    }
+                    setMode(payload.mode);
+                }
+
+                if (payload.isPhysicsEnabled === false) {
+                    physicsEnabled = false;
+                    network.setOptions({ physics: { enabled: false } });
+                } else if (payload.isPhysicsEnabled === true) {
+                    physicsEnabled = true;
+                    network.setOptions({ physics: { enabled: true } });
+                }
+
+                // Allow the network to draw once before applying the overlay transforms
+                network.once("afterDrawing", () => {
+                     renderZoneOverlay();
+                     syncSvgTransform();
+                });
+
             } else {
-                titleEl.textContent = 'Systems Map';
-            }
+                const params = new URLSearchParams(window.location.search);
+                const mode = params.get('mode') || 'systems';
+                document.getElementById('mode-switch').value = mode;
 
-            setMode(mode);
+                // Set dynamic title
+                const titleEl = document.getElementById('app-title');
+                if (mode === 'tactics') {
+                    titleEl.textContent = 'Tactics Board';
+                } else {
+                    titleEl.textContent = 'Systems Map';
+                }
+
+                setMode(mode);
+            }
         });
 
         document.getElementById('pitch-switch').addEventListener('change', applyPitchBackground);
@@ -626,7 +688,7 @@
         // --- Contextual Side Panel Logic ---
         const sidePanel = document.getElementById('side-panel');
 
-        function openSidePanel(type, id) {
+        window.openSidePanel = function openSidePanel(type, id) {
             const item = type === 'node' ? nodes.get(id) : edges.get(id);
             if (!item) return;
 
@@ -638,8 +700,20 @@
             if (type === 'node') {
                 document.getElementById('edit-color-group').classList.remove('hidden');
                 document.getElementById('edit-color').value = item.group || item.color || '';
+
+                document.getElementById('edit-shape-group').classList.remove('hidden');
+                document.getElementById('edit-shape').value = item.shape || 'ellipse';
+
+                document.getElementById('edit-size-group').classList.remove('hidden');
+                document.getElementById('edit-size').value = item.size || 25;
+
+                document.getElementById('edit-image-group').classList.remove('hidden');
+                document.getElementById('edit-image').value = item.image || '';
             } else {
                 document.getElementById('edit-color-group').classList.add('hidden');
+                document.getElementById('edit-shape-group').classList.add('hidden');
+                document.getElementById('edit-size-group').classList.add('hidden');
+                document.getElementById('edit-image-group').classList.add('hidden');
             }
 
             // Remove translation to show panel
@@ -677,13 +751,19 @@
             const type = document.getElementById('edit-type').value;
             const label = document.getElementById('edit-label').value;
             const colorGroup = document.getElementById('edit-color').value;
+            const shape = document.getElementById('edit-shape').value;
+            const size = parseInt(document.getElementById('edit-size').value, 10);
+            const image = document.getElementById('edit-image').value;
 
             if (!id || !type) return;
 
             pushHistory();
 
             if (type === 'node') {
-                const updateData = { id: id, label: label };
+                const updateData = { id: id, label: label, shape: shape };
+                if (!isNaN(size)) updateData.size = size;
+                if (image) updateData.image = image;
+
                 // A simplistic check: if it looks like hex, set color, else set group
                 if (colorGroup.startsWith('#') || colorGroup.startsWith('rgb')) {
                     updateData.color = colorGroup;
@@ -820,7 +900,55 @@
             }
         }
 
+        function exportHtml() {
+            // Re-use logic to get true payload state
+            const positions = network.getPositions();
+            const currentNodes = nodes.get().map(node => {
+                if (positions[node.id]) {
+                    return { ...node, x: positions[node.id].x, y: positions[node.id].y };
+                }
+                return node;
+            });
+
+            const currentMode = document.getElementById('mode-switch').value;
+
+            const payload = {
+                version: 1,
+                mode: currentMode,
+                nodes: currentNodes,
+                edges: edges.get(),
+                zones: zones.get(),
+                isPhysicsEnabled: physicsEnabled
+            };
+
+            // Re-fetch pitch or image manually if it's external (simplistic fallback, relying on mode parameter for built-in pitches mostly)
+            if (currentMode === 'tactics' && document.getElementById('pitch-switch').value !== 'none') {
+                payload.pitch = document.getElementById('pitch-switch').value;
+            }
+
+            // Create a replica of the current HTML document string
+            const htmlString = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+
+            // Inject the initial data payload right before closing body
+            // Note: we break up the closing script tag so the browser parser doesn't choke on it
+            const injectionStr = '<script>window.__INITIAL_DATA__ = ' + JSON.stringify(payload) + ';</' + 'script></body>';
+            const newHtmlString = htmlString.replace('</body>', injectionStr);
+
+            const blob = new Blob([newHtmlString], { type: 'text/html;charset=utf-8' });
+            const url = window.URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.setAttribute("href", url);
+            a.setAttribute("download", "graph_standalone.html");
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+
+            window.URL.revokeObjectURL(url);
+        }
+
         document.getElementById('btn-export-json').addEventListener('click', exportGraph);
+        document.getElementById('btn-export-html').addEventListener('click', exportHtml);
 
         document.getElementById('btn-import-json').addEventListener('click', () => {
             document.getElementById('input-import-json').click();
