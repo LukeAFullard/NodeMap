@@ -354,6 +354,7 @@ Call `pushHistory()` before any mutating action (add/remove/move-commit, not on 
 - [x] 6. **Phase 4: Editing quality-of-life.** Undo/redo (Step 6), keyboard shortcuts, contextual side panel / bottom sheet editor.
 - [x] 7. **Phase 5: Mobile optimization.** FAB-based Pan/Edit toggle, bottom sheets, inflated hitboxes, grid snapping.
 - [x] 8. **Phase 6 (stretch): Two landing pages.** Split Systems and Tactics into separate entry points/branding sharing the same engine and JSON schema, so each audience gets a purpose-fit first impression.
+- [x] 9. **Phase 7 (unplanned extensions): Advanced Exports & Styling.** Standalone HTML export, and advanced node styling (size, shape, color, image).
 
 ---
 
